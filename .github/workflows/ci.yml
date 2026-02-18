@@ -2,54 +2,51 @@ name: CI
 
 on:
   push:
-      branches: [ main, master ]
-        pull_request:
-            branches: [ main, master ]
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
 
-            jobs:
-              test:
-                  runs-on: ubuntu-latest
+jobs:
+  test:
+    runs-on: ubuntu-latest
 
-                      steps:
-                            - name: Check out code
-                                    uses: actions/checkout@v4
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
 
-                                          - name: Set up Python
-                                                  uses: actions/setup-python@v5
-                                                          with:
-                                                                    python-version: '3.11'
-                                                                              cache: 'pip'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
 
-                                                                                    - name: Install core dependencies
-                                                                                            # Skips heavy ML packages (torch, transformers, paddleocr)
-                                                                                                    # which are only needed for the PDF extraction feature,
-                                                                                                            # not for the core pipeline or test suite.
-                                                                                                                    run: |
-                                                                                                                              pip install \
-                                                                                                                                          playwright \
-                                                                                                                                                      requests \
-                                                                                                                                                                  schedule \
-                                                                                                                                                                              python-dotenv \
-                                                                                                                                                                                          colorlog \
-                                                                                                                                                                                                      pytest \
-                                                                                                                                                                                                                  pytest-asyncio \
-                                                                                                                                                                                                                              flask \
-                                                                                                                                                                                                                                          openpyxl \
-                                                                                                                                                                                                                                                      reportlab \
-                                                                                                                                                                                                                                                                  pdfplumber \
-                                                                                                                                                                                                                                                                              Pillow \
-                                                                                                                                                                                                                                                                                          pandas \
-                                                                                                                                                                                                                                                                                                      PyPDF2
-                                                                                                                                                                                                                                                                                                      
-                                                                                                                                                                                                                                                                                                            - name: Install Playwright browsers
-                                                                                                                                                                                                                                                                                                                    run: playwright install chromium --with-deps
-                                                                                                                                                                                                                                                                                                                    
-                                                                                                                                                                                                                                                                                                                          - name: Create dummy .env for tests
-                                                                                                                                                                                                                                                                                                                                  run: |
-                                                                                                                                                                                                                                                                                                                                            echo "SNOV_CLIENT_ID=dummy" >> .env
-                                                                                                                                                                                                                                                                                                                                                      echo "SNOV_CLIENT_SECRET=dummy" >> .env
-                                                                                                                                                                                                                                                                                                                                                                echo "RUN_TIME=09:30" >> .env
-                                                                                                                                                                                                                                                                                                                                                                          echo "KEYWORDS=HR,rekruttering" >> .env
-                                                                                                                                                                                                                                                                                                                                                                          
-                                                                                                                                                                                                                                                                                                                                                                                - name: Run tests
-                                                                                                                                                                                                                                                                                                                                                                                        run: pytest tests/ -v --tb=short
+      - name: Install core dependencies
+        run: |
+          pip install \
+            playwright \
+            requests \
+            schedule \
+            python-dotenv \
+            colorlog \
+            pytest \
+            pytest-asyncio \
+            flask \
+            openpyxl \
+            reportlab \
+            pdfplumber \
+            Pillow \
+            pandas \
+            PyPDF2
+
+      - name: Install Playwright browsers
+        run: playwright install chromium --with-deps
+
+      - name: Create dummy .env for tests
+        run: |
+          echo "SNOV_CLIENT_ID=dummy" >> .env
+          echo "SNOV_CLIENT_SECRET=dummy" >> .env
+          echo "RUN_TIME=09:30" >> .env
+          echo "KEYWORDS=HR,rekruttering" >> .env
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
