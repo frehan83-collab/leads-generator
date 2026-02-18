@@ -7,7 +7,12 @@
       "Bash(cmd.exe:*)",
       "Bash(gh auth status:*)",
       "Bash(powershell.exe:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git config:*)",
+      "Bash(git push:*)",
+      "Bash(git pull:*)",
+      "Bash(git stash:*)"
     ]
   }
 }
