@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(winget install:*)",
+      "Bash(where.exe:*)",
+      "Bash(choco install:*)",
+      "Bash(cmd.exe:*)",
+      "Bash(gh auth status:*)",
+      "Bash(powershell.exe:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

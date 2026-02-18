@@ -4,9 +4,12 @@
 {% block content %}
 <div class="mb-8">
     <div class="flex items-center justify-between">
-        <div>
-            <h1 class="text-3xl font-bold text-white mb-2">Extracted Data</h1>
-            <p class="text-slate-400">{{ extraction_count }} extractions</p>
+        <div class="flex items-center gap-4">
+            <img src="/static/logos/era-group-logo.jpg" alt="ERA Group" class="h-12 rounded-lg shadow-lg border border-slate-700">
+            <div>
+                <h1 class="text-3xl font-bold text-white mb-1">Extracted Data</h1>
+                <p class="text-slate-400">{{ extraction_count }} extractions</p>
+            </div>
         </div>
         <div class="flex gap-3">
             <a href="/era/extractions/export/csv" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2">
