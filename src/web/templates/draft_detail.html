@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Draft #{{ draft.id }}{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <div class="flex items-center gap-2 text-sm text-slate-500 mb-3">
+        <a href="/campaigns" class="hover:text-slate-300">Campaigns</a>
+        <span>&rarr;</span>
+        <span class="text-slate-300">Draft #{{ draft.id }}</span>
+    </div>
+    <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-bold text-white">Email Draft</h1>
+        <span class="text-sm px-3 py-1 rounded-full font-medium badge-{{ draft.status }}">{{ draft.status | capitalize }}</span>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Main: Edit form -->
+    <div class="lg:col-span-2 space-y-4">
+        <form method="post" action="/campaigns/{{ draft.id }}/edit">
+            <div class="card space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">To</label>
+                    <div class="text-slate-200">
+                        {{ draft.prospect_name or 'Unknown' }}
+                        &lt;<a href="mailto:{{ draft.prospect_email }}" class="text-blue-400 hover:text-blue-300">{{ draft.prospect_email }}</a>&gt;
+                        {% if draft.prospect_title %}<span class="text-slate-500 text-sm"> &bull; {{ draft.prospect_title }}</span>{% endif %}
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Company</label>
+                    <div class="text-slate-200">{{ draft.company_name }}
+                        {% if draft.company_domain %}<span class="text-slate-500 text-sm">— <a href="https://{{ draft.company_domain }}" target="_blank" class="text-blue-400 hover:text-blue-300">{{ draft.company_domain }}</a></span>{% endif %}
+                    </div>
+                </div>
+                {% if draft.job_title %}
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Related Job Posting</label>
+                    <div class="text-slate-200">{{ draft.job_title }}
+                        {% if draft.job_location %}<span class="text-slate-500"> &bull; {{ draft.job_location }}</span>{% endif %}
+                        {% if draft.job_url %}&bull; <a href="{{ draft.job_url }}" target="_blank" class="text-blue-400 hover:text-blue-300 text-sm">finn.no &rarr;</a>{% endif %}
+                    </div>
+                </div>
+                {% endif %}
+                <hr class="border-slate-700">
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Subject</label>
+                    <input type="text" name="subject" value="{{ draft.subject }}" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Body</label>
+                    <textarea name="body" rows="16" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500 font-mono whitespace-pre-wrap">{{ draft.body }}</textarea>
+                </div>
+                <div class="flex gap-3">
+                    <button type="submit" class="px-4 py-2 bg-slate-600 hover:bg-slate-500 rounded-lg text-sm font-medium text-slate-200 transition-colors">Save Changes</button>
+                    {% if draft.status == 'draft' %}
+                    <button type="button" onclick="document.getElementById('approve-form').submit()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium text-white transition-colors">Save & Approve</button>
+                    {% endif %}
+                </div>
+            </div>
+        </form>
+        <form id="approve-form" method="post" action="/campaigns/{{ draft.id }}/approve"></form>
+    </div>
+
+    <!-- Sidebar: Actions + Info -->
+    <div class="space-y-4">
+        <!-- Quick actions -->
+        <div class="card space-y-3">
+            <h3 class="text-sm font-semibold text-slate-300">Actions</h3>
+            {% if draft.status == 'draft' %}
+            <form method="post" action="/campaigns/{{ draft.id }}/approve">
+                <button type="submit" class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium text-white transition-colors">
+                    Approve Draft
+                </button>
+            </form>
+            {% endif %}
+            <a href="/campaigns" class="block text-center px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium text-slate-300 transition-colors">Back to Campaigns</a>
+        </div>
+
+        <!-- Regenerate with different template -->
+        <div class="card space-y-3">
+            <h3 class="text-sm font-semibold text-slate-300">Regenerate</h3>
+            <p class="text-xs text-slate-500">Generate a fresh draft using a different template.</p>
+            <form method="post" action="/campaigns/{{ draft.id }}/regenerate">
+                <select name="template_name" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500 mb-3">
+                    {% for key, tpl in templates.items() %}
+                    <option value="{{ key }}" {% if draft.template_name == key %}selected{% endif %}>{{ tpl.label }}</option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="w-full px-4 py-2 bg-slate-600 hover:bg-slate-500 rounded-lg text-sm font-medium text-slate-200 transition-colors">
+                    Regenerate
+                </button>
+            </form>
+        </div>
+
+        <!-- Info -->
+        <div class="card space-y-2">
+            <h3 class="text-sm font-semibold text-slate-300">Details</h3>
+            <div class="text-xs space-y-1.5">
+                <div class="flex justify-between">
+                    <span class="text-slate-500">Template</span>
+                    <span class="text-slate-300">{{ draft.template_name | replace('_', ' ') | title }}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-500">Created</span>
+                    <span class="text-slate-300">{{ (draft.created_at or '')[:16] | replace('T', ' ') }}</span>
+                </div>
+                {% if draft.approved_at %}
+                <div class="flex justify-between">
+                    <span class="text-slate-500">Approved</span>
+                    <span class="text-slate-300">{{ draft.approved_at[:16] | replace('T', ' ') }}</span>
+                </div>
+                {% endif %}
+                {% if draft.sent_at %}
+                <div class="flex justify-between">
+                    <span class="text-slate-500">Sent</span>
+                    <span class="text-slate-300">{{ draft.sent_at[:16] | replace('T', ' ') }}</span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

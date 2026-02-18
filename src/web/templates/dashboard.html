@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-white">Dashboard</h1>
+    <p class="text-slate-400 text-sm mt-1">Sperton leads overview — finn.no recruitment pipeline</p>
+</div>
+
+<!-- Stats Cards -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div class="card">
+        <div class="text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">Job Postings</div>
+        <div class="text-3xl font-bold text-white">{{ stats.total_postings }}</div>
+        {% if stats.new_postings_today > 0 %}
+        <div class="text-green-400 text-xs mt-1">+{{ stats.new_postings_today }} today</div>
+        {% endif %}
+    </div>
+    <div class="card">
+        <div class="text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">Prospects</div>
+        <div class="text-3xl font-bold text-white">{{ stats.total_prospects }}</div>
+        {% if stats.new_prospects_today > 0 %}
+        <div class="text-green-400 text-xs mt-1">+{{ stats.new_prospects_today }} today</div>
+        {% endif %}
+    </div>
+    <div class="card">
+        <div class="text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">Verified Emails</div>
+        <div class="text-3xl font-bold text-white">{{ stats.verified_emails }}</div>
+        <div class="text-slate-500 text-xs mt-1">
+            {% if stats.total_prospects > 0 %}{{ ((stats.verified_emails / stats.total_prospects) * 100) | round(0) | int }}% of total{% endif %}
+        </div>
+    </div>
+    <div class="card">
+        <div class="text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">Email Drafts</div>
+        <div class="text-3xl font-bold text-white">{{ stats.total_drafts }}</div>
+        <div class="text-slate-500 text-xs mt-1">{{ stats.drafts_sent }} sent &bull; {{ stats.drafts_replied }} replied</div>
+    </div>
+</div>
+
+<!-- Charts -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+    <div class="card">
+        <h2 class="text-sm font-semibold text-slate-300 mb-4">Job Postings (last 30 days)</h2>
+        <canvas id="postingsChart" height="120"></canvas>
+    </div>
+    <div class="card">
+        <h2 class="text-sm font-semibold text-slate-300 mb-4">Prospects Found (last 30 days)</h2>
+        <canvas id="prospectsChart" height="120"></canvas>
+    </div>
+</div>
+
+<!-- Bottom row: Activity feed + Pipeline runs -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <!-- Activity Feed -->
+    <div class="card">
+        <h2 class="text-sm font-semibold text-slate-300 mb-4">Recent Activity</h2>
+        <div class="space-y-2">
+            {% for item in activity %}
+            <div class="flex items-start gap-3 py-2 border-b border-slate-700 last:border-0">
+                <div class="mt-0.5 flex-shrink-0">
+                    {% if item.type == 'posting' %}
+                    <div class="w-6 h-6 bg-blue-900 rounded-full flex items-center justify-center">
+                        <svg class="w-3 h-3 text-blue-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/><path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5z"/></svg>
+                    </div>
+                    {% elif item.type == 'prospect' %}
+                    <div class="w-6 h-6 bg-purple-900 rounded-full flex items-center justify-center">
+                        <svg class="w-3 h-3 text-purple-400" fill="currentColor" viewBox="0 0 20 20"><path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"/></svg>
+                    </div>
+                    {% else %}
+                    <div class="w-6 h-6 bg-green-900 rounded-full flex items-center justify-center">
+                        <svg class="w-3 h-3 text-green-400" fill="currentColor" viewBox="0 0 20 20"><path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"/><path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"/></svg>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="min-w-0 flex-1">
+                    <div class="text-sm text-slate-200 truncate">{{ item.title }}</div>
+                    <div class="text-xs text-slate-500 truncate">{{ item.description }}</div>
+                </div>
+                <div class="text-xs text-slate-600 flex-shrink-0">{{ (item.timestamp or '')[:10] }}</div>
+            </div>
+            {% else %}
+            <p class="text-slate-500 text-sm">No activity yet. Run the pipeline to get started.</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Recent Pipeline Runs -->
+    <div class="card">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-sm font-semibold text-slate-300">Pipeline Runs</h2>
+            <a href="/settings" class="text-blue-400 text-xs hover:text-blue-300">Run now &rarr;</a>
+        </div>
+        {% if recent_runs %}
+        <div class="space-y-2">
+            {% for run in recent_runs %}
+            <div class="flex items-center gap-3 py-2 border-b border-slate-700 last:border-0">
+                <span class="text-xs px-2 py-0.5 rounded-full font-medium badge-{{ run.status }}">{{ run.status }}</span>
+                <div class="flex-1 min-w-0">
+                    <div class="text-xs text-slate-300">{{ (run.started_at or '')[:16] | replace('T', ' ') }}</div>
+                    <div class="text-xs text-slate-500">
+                        {{ run.postings_scraped }} postings &bull; {{ run.emails_found }} emails &bull; {{ run.drafts_created }} drafts
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-slate-500 text-sm">No pipeline runs yet.</p>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+const chartDefaults = {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+        x: { grid: { color: '#1e293b' }, ticks: { color: '#64748b', font: { size: 10 } } },
+        y: { grid: { color: '#1e293b' }, ticks: { color: '#64748b', font: { size: 10 } }, beginAtZero: true }
+    }
+};
+
+const postingsData = {{ postings_chart | tojson }};
+const prospectsData = {{ prospects_chart | tojson }};
+
+new Chart(document.getElementById('postingsChart'), {
+    type: 'bar',
+    data: {
+        labels: postingsData.map(d => d.day),
+        datasets: [{ data: postingsData.map(d => d.count), backgroundColor: '#3b82f6', borderRadius: 4 }]
+    },
+    options: chartDefaults
+});
+
+new Chart(document.getElementById('prospectsChart'), {
+    type: 'bar',
+    data: {
+        labels: prospectsData.map(d => d.day),
+        datasets: [{ data: prospectsData.map(d => d.count), backgroundColor: '#8b5cf6', borderRadius: 4 }]
+    },
+    options: chartDefaults
+});
+</script>
+{% endblock %}

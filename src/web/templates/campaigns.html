@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Campaigns{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-white">Email Campaigns</h1>
+    <p class="text-slate-400 text-sm mt-1">Auto-drafted outreach emails — review and approve before sending</p>
+</div>
+
+<!-- Status Tabs -->
+<div class="flex gap-2 mb-5 flex-wrap">
+    <a href="/campaigns" class="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors {% if not status_filter %}bg-blue-600 text-white{% else %}bg-slate-700 text-slate-300 hover:bg-slate-600{% endif %}">
+        All
+        <span class="ml-1 text-xs opacity-70">{{ status_counts.values() | sum }}</span>
+    </a>
+    {% for s, count in status_counts.items() %}
+    <a href="/campaigns?status={{ s }}" class="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors {% if status_filter == s %}bg-blue-600 text-white{% else %}bg-slate-700 text-slate-300 hover:bg-slate-600{% endif %}">
+        {{ s | capitalize }}
+        <span class="ml-1 text-xs opacity-70">{{ count }}</span>
+    </a>
+    {% endfor %}
+</div>
+
+<!-- Draft Cards -->
+{% if drafts %}
+<div class="space-y-3">
+    {% for draft in drafts %}
+    <div class="card hover:border-slate-600 transition-colors">
+        <div class="flex items-start justify-between gap-4">
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-3 mb-1">
+                    <span class="text-xs px-2 py-0.5 rounded-full font-medium badge-{{ draft.status }}">{{ draft.status }}</span>
+                    <span class="text-xs text-slate-500">{{ draft.template_name | replace('_', ' ') | title }}</span>
+                    <span class="text-xs text-slate-600">{{ (draft.created_at or '')[:10] }}</span>
+                </div>
+                <div class="font-semibold text-slate-200 truncate">{{ draft.subject }}</div>
+                <div class="text-sm text-slate-400 mt-0.5">
+                    To: <span class="text-blue-400">{{ draft.prospect_email }}</span>
+                    {% if draft.prospect_title %}&bull; {{ draft.prospect_title }}{% endif %}
+                    &bull; <span class="font-medium">{{ draft.company_name }}</span>
+                </div>
+                {% if draft.job_title %}
+                <div class="text-xs text-slate-500 mt-0.5">Job: {{ draft.job_title }}{% if draft.job_location %} &bull; {{ draft.job_location }}{% endif %}</div>
+                {% endif %}
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0">
+                <a href="/campaigns/{{ draft.id }}" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-medium text-slate-300 transition-colors">
+                    View
+                </a>
+                {% if draft.status == 'draft' %}
+                <form method="post" action="/campaigns/{{ draft.id }}/approve" class="inline">
+                    <button type="submit" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-xs font-medium text-white transition-colors">
+                        Approve
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card text-center py-12">
+    <div class="text-slate-500 text-lg mb-2">No email drafts yet</div>
+    <div class="text-slate-600 text-sm">Run the pipeline to auto-generate personalised email drafts for each new prospect.</div>
+    <a href="/settings" class="inline-block mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium text-white transition-colors">Go to Settings &rarr;</a>
+</div>
+{% endif %}
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<div class="flex items-center justify-between mt-4 text-sm">
+    <div class="text-slate-500">Page {{ page }} of {{ total_pages }}</div>
+    <div class="flex gap-2">
+        {% if page > 1 %}
+        <a href="?page={{ page - 1 }}&status={{ status_filter }}" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-slate-300 transition-colors">&larr; Prev</a>
+        {% endif %}
+        {% if page < total_pages %}
+        <a href="?page={{ page + 1 }}&status={{ status_filter }}" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-slate-300 transition-colors">Next &rarr;</a>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}

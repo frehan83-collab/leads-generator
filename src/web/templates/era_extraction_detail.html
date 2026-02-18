@@ -1,0 +1,323 @@
+{% extends "base.html" %}
+{% block title %}Extraction Details — ERA Analytics{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <a href="/era/extractions" class="text-blue-400 hover:text-blue-300 text-sm font-medium mb-4 inline-block">
+        ← Back to Extractions
+    </a>
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-bold text-white">{{ extraction.filename }}</h1>
+            <p class="text-slate-400 text-sm mt-1">Extracted on {{ extraction.extraction_date[:10] if extraction.extraction_date else "—" }}</p>
+        </div>
+        <div class="flex gap-3">
+            <a href="/era/extractions/export/csv" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                CSV
+            </a>
+            <a href="/era/extractions/export/xlsx" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                Excel
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+    <div class="card">
+        <h3 class="text-xs font-semibold text-slate-400 uppercase">Document Type</h3>
+        <p class="text-lg font-bold text-white mt-2">
+            {% if extraction.extraction_type == 'invoice' %}
+                Invoice
+            {% elif extraction.extraction_type == 'contract' %}
+                Contract
+            {% elif extraction.extraction_type == 'statement' %}
+                Financial Statement
+            {% else %}
+                Document
+            {% endif %}
+        </p>
+    </div>
+
+    <div class="card">
+        <h3 class="text-xs font-semibold text-slate-400 uppercase">Confidence</h3>
+        <div class="flex items-center gap-2 mt-2">
+            <div class="w-full bg-slate-700 rounded-full h-2">
+                {% set conf_pct = (extraction.confidence_score or 0) * 100 %}
+                <div class="h-2 rounded-full {% if conf_pct >= 80 %}bg-green-500{% elif conf_pct >= 60 %}bg-blue-500{% elif conf_pct >= 40 %}bg-yellow-500{% else %}bg-red-500{% endif %}" style="width: {{ conf_pct }}%"></div>
+            </div>
+            <span class="text-lg font-bold text-white whitespace-nowrap">{{ conf_pct | round(0) }}%</span>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3 class="text-xs font-semibold text-slate-400 uppercase">Fields Extracted</h3>
+        <p class="text-lg font-bold text-white mt-2">{{ extraction.field_count or 0 }}</p>
+    </div>
+
+    <div class="card">
+        <h3 class="text-xs font-semibold text-slate-400 uppercase">Pages Processed</h3>
+        <p class="text-lg font-bold text-white mt-2">{{ extraction.data.get('pages_processed', 1) if extraction.data else 1 }}</p>
+    </div>
+</div>
+
+{% if extraction.data %}
+
+<!-- Invoice Header Fields -->
+{% set skip_keys = ['line_items', 'tables', 'text_blocks', 'pages_processed', 'total_characters', 'raw_text', 'dates_found', 'amounts_found', 'emails_found', 'phones_found', 'urls_found', 'total_tables', 'total_rows', 'items', 'item_count'] %}
+{% set header_fields = [] %}
+{% for key, value in extraction.data.items() %}
+    {% if key not in skip_keys and value is not none and value != '' and value != [] %}
+        {% if value is string or value is number %}
+            {% if header_fields.append({'key': key, 'value': value}) %}{% endif %}
+        {% endif %}
+    {% endif %}
+{% endfor %}
+
+{% if header_fields %}
+<div class="card mb-6">
+    <h2 class="text-lg font-semibold text-white mb-4">Extracted Fields</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        {% for field in header_fields %}
+        <div class="bg-slate-900 rounded-lg p-3 border border-slate-700 group hover:border-blue-600 transition">
+            <div class="flex items-start justify-between">
+                <div class="flex-1 min-w-0">
+                    <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">{{ field.key.replace('_', ' ') }}</h4>
+                    <p class="text-white text-sm font-medium truncate" title="{{ field.value }}">{{ field.value }}</p>
+                </div>
+                <button class="correct-btn opacity-0 group-hover:opacity-100 text-blue-400 hover:text-blue-300 text-xs font-medium ml-2 transition-opacity" data-field="{{ field.key }}">
+                    Edit
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Line Items Table -->
+{% if extraction.data.get('line_items') and extraction.data.line_items | length > 0 %}
+<div class="card mb-6">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-white">Line Items</h2>
+        <span class="text-xs text-slate-400 bg-slate-700 px-2 py-1 rounded">{{ extraction.data.line_items | length }} item(s)</span>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="bg-slate-900 border-b border-slate-600">
+                    <th class="px-3 py-2 text-left text-slate-400 text-xs font-semibold">#</th>
+                    {% if extraction.data.line_items[0].get('product_code') %}<th class="px-3 py-2 text-left text-slate-400 text-xs font-semibold">Code</th>{% endif %}
+                    <th class="px-3 py-2 text-left text-slate-400 text-xs font-semibold">Description</th>
+                    {% if extraction.data.line_items[0].get('quantity') %}<th class="px-3 py-2 text-right text-slate-400 text-xs font-semibold">Qty</th>{% endif %}
+                    {% if extraction.data.line_items[0].get('unit') %}<th class="px-3 py-2 text-left text-slate-400 text-xs font-semibold">Unit</th>{% endif %}
+                    {% if extraction.data.line_items[0].get('unit_price') %}<th class="px-3 py-2 text-right text-slate-400 text-xs font-semibold">Unit Price</th>{% endif %}
+                    {% if extraction.data.line_items[0].get('tax') %}<th class="px-3 py-2 text-right text-slate-400 text-xs font-semibold">Tax</th>{% endif %}
+                    {% if extraction.data.line_items[0].get('amount') %}<th class="px-3 py-2 text-right text-slate-400 text-xs font-semibold">Amount</th>{% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in extraction.data.line_items %}
+                <tr class="border-b border-slate-700 hover:bg-slate-700/30 transition">
+                    <td class="px-3 py-2 text-slate-500 text-xs">{{ item.get('line_no', loop.index) }}</td>
+                    {% if extraction.data.line_items[0].get('product_code') %}<td class="px-3 py-2 text-slate-300 text-xs font-mono">{{ item.get('product_code', '') }}</td>{% endif %}
+                    <td class="px-3 py-2 text-white">{{ item.get('description', '—') }}</td>
+                    {% if extraction.data.line_items[0].get('quantity') %}<td class="px-3 py-2 text-right text-slate-300">{{ item.get('quantity', '') }}</td>{% endif %}
+                    {% if extraction.data.line_items[0].get('unit') %}<td class="px-3 py-2 text-slate-400 text-xs">{{ item.get('unit', '') }}</td>{% endif %}
+                    {% if extraction.data.line_items[0].get('unit_price') %}<td class="px-3 py-2 text-right text-slate-300">{{ item.get('unit_price', '') }}</td>{% endif %}
+                    {% if extraction.data.line_items[0].get('tax') %}<td class="px-3 py-2 text-right text-slate-300">{{ item.get('tax', '') }}</td>{% endif %}
+                    {% if extraction.data.line_items[0].get('amount') %}<td class="px-3 py-2 text-right text-white font-medium">{{ item.get('amount', '') }}</td>{% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- Detected Tables -->
+{% if extraction.data.get('tables') and extraction.data.tables | length > 0 %}
+<div class="card mb-6">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-white">Detected Tables</h2>
+        <span class="text-xs text-slate-400 bg-slate-700 px-2 py-1 rounded">{{ extraction.data.tables | length }} table(s)</span>
+    </div>
+    {% for table in extraction.data.tables %}
+    <div class="mb-4 last:mb-0">
+        <h3 class="text-sm text-slate-400 mb-2">Table {{ loop.index }} (Page {{ table.get('page', '?') }}, {{ table.get('row_count', table.get('rows', []) | length) }} rows)</h3>
+        <div class="overflow-x-auto rounded-lg border border-slate-700">
+            <table class="w-full text-xs">
+                {% if table.get('headers') %}
+                <thead>
+                    <tr class="bg-slate-900">
+                        {% for header in table.headers %}
+                        <th class="px-3 py-2 text-left text-slate-400 font-semibold border-b border-slate-700 whitespace-nowrap">{{ header }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                {% endif %}
+                <tbody>
+                    {% for row in table.get('rows', [])[:50] %}
+                    <tr class="border-b border-slate-800 hover:bg-slate-800/50 {% if loop.index is even %}bg-slate-900/30{% endif %}">
+                        {% if row is mapping %}
+                            {% for header in table.get('headers', []) %}
+                            <td class="px-3 py-1.5 text-slate-300 whitespace-nowrap">{{ row.get(header, '') }}</td>
+                            {% endfor %}
+                        {% elif row is iterable and row is not string %}
+                            {% for cell in row %}
+                            <td class="px-3 py-1.5 text-slate-300 whitespace-nowrap">{{ cell }}</td>
+                            {% endfor %}
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                    {% if table.get('rows', []) | length > 50 %}
+                    <tr><td colspan="99" class="px-3 py-2 text-slate-500 text-center">... and {{ table.get('rows', []) | length - 50 }} more rows</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Auto-detected data (for generic docs) -->
+{% if extraction.data.get('dates_found') or extraction.data.get('amounts_found') or extraction.data.get('emails_found') %}
+<div class="card mb-6">
+    <h2 class="text-lg font-semibold text-white mb-4">Auto-Detected Data</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {% if extraction.data.get('dates_found') %}
+        <div>
+            <h3 class="text-xs font-semibold text-slate-400 uppercase mb-2">Dates Found</h3>
+            <div class="space-y-1">
+                {% for date in extraction.data.dates_found %}
+                <span class="inline-block bg-blue-900/30 text-blue-300 px-2 py-0.5 rounded text-xs mr-1 mb-1">{{ date }}</span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        {% if extraction.data.get('amounts_found') %}
+        <div>
+            <h3 class="text-xs font-semibold text-slate-400 uppercase mb-2">Amounts Found</h3>
+            <div class="space-y-1">
+                {% for amount in extraction.data.amounts_found %}
+                <span class="inline-block bg-emerald-900/30 text-emerald-300 px-2 py-0.5 rounded text-xs mr-1 mb-1">{{ amount }}</span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        {% if extraction.data.get('emails_found') %}
+        <div>
+            <h3 class="text-xs font-semibold text-slate-400 uppercase mb-2">Emails Found</h3>
+            <div class="space-y-1">
+                {% for email in extraction.data.emails_found %}
+                <span class="inline-block bg-purple-900/30 text-purple-300 px-2 py-0.5 rounded text-xs mr-1 mb-1">{{ email }}</span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Contract Parties -->
+{% if extraction.data.get('parties') and extraction.data.parties | length > 0 %}
+<div class="card mb-6">
+    <h2 class="text-lg font-semibold text-white mb-4">Contract Parties</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {% for party in extraction.data.parties %}
+        <div class="bg-slate-900 rounded-lg p-4 border border-slate-700">
+            <h4 class="text-xs font-semibold text-slate-400 uppercase mb-1">Party {{ loop.index }}</h4>
+            <p class="text-white font-medium">{{ party }}</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Raw Data (collapsed) -->
+<details class="card mb-6">
+    <summary class="text-sm font-semibold text-slate-400 cursor-pointer hover:text-white transition">Raw Extracted Data (JSON)</summary>
+    <pre class="mt-3 p-3 bg-slate-900 rounded-lg text-xs text-slate-300 overflow-x-auto max-h-96 overflow-y-auto border border-slate-700"><code>{{ extraction.data | tojson(indent=2) }}</code></pre>
+</details>
+
+{% else %}
+<div class="card text-center py-12">
+    <p class="text-slate-400">No data extracted</p>
+</div>
+{% endif %}
+
+<!-- Correction Modals -->
+{% if extraction.data %}
+{% for key, value in extraction.data.items() %}
+{% if value is string or value is number %}
+<div id="correct-modal-{{ key }}" class="correction-modal hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+    <div class="bg-slate-800 rounded-lg p-6 w-96 border border-slate-700">
+        <h3 class="text-lg font-semibold text-white mb-2">Correct: {{ key.replace('_', ' ') }}</h3>
+        <p class="text-xs text-slate-400 mb-3">Current: {{ value }}</p>
+        <input type="text" id="correct-input-{{ key }}" class="w-full bg-slate-900 text-white rounded px-3 py-2 border border-slate-700 mb-4 focus:border-blue-500 focus:outline-none" placeholder="Corrected value">
+        <div class="flex gap-3">
+            <button onclick="submitCorrection('{{ key }}', {{ extraction.id }})" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded font-medium transition text-sm">
+                Save Correction
+            </button>
+            <button onclick="closeModal('{{ key }}')" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-2 rounded font-medium transition text-sm">
+                Cancel
+            </button>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endfor %}
+{% endif %}
+
+<script>
+function closeModal(field) {
+    document.getElementById(`correct-modal-${field}`).classList.add('hidden');
+}
+
+function openModal(field) {
+    const modal = document.getElementById(`correct-modal-${field}`);
+    if (modal) modal.classList.remove('hidden');
+}
+
+function submitCorrection(field, extractionId) {
+    const input = document.getElementById(`correct-input-${field}`);
+    const value = input ? input.value : '';
+
+    if (!value.trim()) {
+        alert('Please enter a value');
+        return;
+    }
+
+    fetch(`/era/extractions/${extractionId}/correct`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ field, value })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            closeModal(field);
+            // Visual feedback
+            const el = document.querySelector(`[data-field="${field}"]`);
+            if (el) {
+                el.closest('.group').classList.add('border-green-600');
+                el.textContent = 'Saved';
+                setTimeout(() => window.location.reload(), 1000);
+            }
+        } else {
+            alert('Error: ' + data.error);
+        }
+    });
+}
+
+// Attach click handlers to Edit buttons
+document.querySelectorAll('.correct-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        openModal(e.target.dataset.field);
+    });
+});
+</script>
+{% endblock %}
