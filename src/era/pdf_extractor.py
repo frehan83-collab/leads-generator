@@ -239,6 +239,7 @@ def extract_invoice_data_ml(pdf_path: str, use_fine_tuned: bool = False) -> dict
                     })
             fields["tables"] = parsed_tables
             fields["pages_processed"] = len(pdf.pages)
+            fields["raw_text"] = all_text
 
             # --- Calculate overall confidence ---
             key_fields = ["invoice_number", "invoice_date", "vendor_name", "total_amount"]
@@ -544,10 +545,13 @@ def extract_generic_data_ml(pdf_path: str) -> dict:
 def _extract_invoice_number(text: str) -> tuple:
     """Extract invoice number with confidence."""
     patterns = [
-        (r"(?:Invoice|Inv|Faktura)[\s.#:]*(?:No\.?|Number|Nr\.?|#)?\s*[:\s]?\s*([A-Z0-9][\w\-/]{2,20})", 0.95),
-        (r"(?:Invoice|Faktura)\s*[:\s]+\s*([A-Z0-9][\w\-/]{2,20})", 0.90),
-        (r"(?:Inv|INV)[.\s#-]*(\d[\w\-/]{2,15})", 0.85),
-        (r"(?:Document|Doc)[\s.#:]*(?:No\.?|Number|Nr\.?)?\s*[:\s]?\s*([A-Z0-9][\w\-/]{2,20})", 0.70),
+        # Norwegian: "Fakturanr: INV-2024-0042" — no newline crossing, colon required
+        (r"(?:Fakturanr|Fakturanummer|Faktura\s*nr)\.?[ \t]*[:#][ \t]*([A-Z0-9][\w\-/]{2,20})", 0.95),
+        # English: "Invoice No: 1234", "Inv. #5678" — use [ \t] not \s to avoid newlines
+        (r"(?:Invoice|Inv|Faktura)[ \t.#:]*(?:No\.?|Number|Nr\.?|#)?[ \t]*[:#][ \t]*([A-Z0-9][\w\-/]{2,20})", 0.93),
+        (r"(?:Invoice|Faktura)[ \t]*[:#][ \t]*([A-Z0-9][\w\-/]{2,20})", 0.90),
+        (r"(?:Inv|INV)[ \t.#-]*(\d[\w\-/]{2,15})", 0.85),
+        (r"(?:Document|Doc)[ \t.#:]*(?:No\.?|Number|Nr\.?)?[ \t]*[:#][ \t]*([A-Z0-9][\w\-/]{2,20})", 0.70),
     ]
     for pattern, conf in patterns:
         match = re.search(pattern, text, re.IGNORECASE)
@@ -585,9 +589,10 @@ def _extract_labeled_date(text: str, labels: list) -> tuple:
 def _extract_labeled_amount(text: str, labels: list) -> tuple:
     """Extract a monetary amount near a label."""
     for label in labels:
-        # Pattern: label followed by currency/amount
+        # Pattern: label followed by optional tax-rate like "25%:", then currency/amount
         pattern = (
             rf"(?:{re.escape(label)})\s*[:\s]\s*"
+            r"(?:\d+[\.,]?\d*\s*%\s*[:\s]?\s*)?"  # skip optional rate "25%:"
             r"(?:[$€£¥₹]|kr\.?|NOK|SEK|DKK|USD|EUR|GBP|CHF)?\s*"
             r"([\d]{1,3}(?:[,.\s]?\d{3})*(?:[.,]\d{1,2})?)"
         )
@@ -608,7 +613,7 @@ def _extract_labeled_amount(text: str, labels: list) -> tuple:
                 nearby, re.IGNORECASE,
             )
             if amounts:
-                normalized = _normalize_amount(amounts[-1])
+                normalized = _normalize_amount(amounts[0])
                 if normalized:
                     return normalized, 0.65
 
@@ -630,8 +635,8 @@ def _extract_labeled_value(text: str, labels: list) -> tuple:
 def _extract_entity_name(text: str, labels: list) -> tuple:
     """Extract a company/person name near a label."""
     for label in labels:
-        # Find label position and grab the next non-empty line
-        pattern = rf"(?:{re.escape(label)})\s*[:\s]\s*(.+?)(?:\n|$)"
+        # \b word boundaries prevent "to" matching inside "Fakturadato", etc.
+        pattern = rf"\b{re.escape(label)}\b\s*[:\s]\s*(.+?)(?:\n|$)"
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
             name = match.group(1).strip()
@@ -668,7 +673,8 @@ def _extract_address(text: str, entity_type: str) -> tuple:
 def _extract_tax_id(text: str, labels: list) -> tuple:
     """Extract tax ID / org number."""
     for label in labels:
-        pattern = rf"(?:{re.escape(label)})\s*[:\s]?\s*(\d[\d\s\-]{5,15}\d)"
+        # Allow "." separator (e.g. "Org.nr. 932 814 569") and optional "NO" prefix
+        pattern = rf"(?:{re.escape(label)})\s*[.:\s]{{0,3}}\s*((?:NO\s*)?\d[\d\s\-]{{5,15}}\d)"
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
             return match.group(1).strip(), 0.90
@@ -706,8 +712,9 @@ def _extract_payment_terms(text: str) -> tuple:
 def _extract_bank_info(text: str) -> tuple:
     """Extract bank account / IBAN / payment reference."""
     patterns = [
-        (r"(?:IBAN|iban)\s*[:\s]?\s*([A-Z]{2}\d{2}[\s]?[\dA-Z\s]{10,30})", 0.95),
-        (r"(?:Account|Konto|Kontonr)\s*[:\s]?\s*([\d\s.]{8,20})", 0.80),
+        # Use [ ] (literal space) not \s to prevent IBAN from bleeding across newlines
+        (r"(?:IBAN|iban)\s*[:\s]?\s*([A-Z]{2}\d{2}[ ]?[\dA-Z ]{10,30})", 0.95),
+        (r"(?:Account|Konto|Kontonr)\s*[:\s]?\s*([\d .\-]{8,20})", 0.80),
         (r"(?:SWIFT|BIC)\s*[:\s]?\s*([A-Z]{6}[A-Z0-9]{2,5})", 0.90),
     ]
     for pattern, conf in patterns:
@@ -793,9 +800,19 @@ def _map_line_item_columns(headers: list) -> dict:
         "discount": ["discount", "rabatt"],
     }
 
+    def _header_matches(header: str, keywords: list) -> bool:
+        """Match keyword as a complete word — prevents 'enhet' matching inside 'enhetspris'."""
+        for kw in keywords:
+            if header == kw:
+                return True
+            # Keyword must not be surrounded by alpha chars (whole-word boundary)
+            if re.search(rf"(?<![a-zA-Z]){re.escape(kw)}(?![a-zA-Z])", header):
+                return True
+        return False
+
     for role, keywords in role_keywords.items():
         for col_idx, header in enumerate(headers):
-            if any(kw in header for kw in keywords):
+            if _header_matches(header, keywords):
                 col_map[role] = col_idx
                 break
 

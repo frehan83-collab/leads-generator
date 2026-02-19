@@ -1006,6 +1006,7 @@ def get_all_extractions_for_export() -> list[dict]:
     with get_connection() as conn:
         rows = conn.execute("""
             SELECT
+                ee.id,
                 eu.filename,
                 eu.upload_date,
                 ee.extraction_type,

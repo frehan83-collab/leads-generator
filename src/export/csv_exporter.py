@@ -617,4 +617,167 @@ def build_era_extractions_xlsx(extractions: list[dict] = None) -> bytes:
 
     logger.info(f"Built ERA extractions XLSX with {len(extractions)} records")
     return output.getvalue()
-export_postings  = export_postings_csv
+export_postings = export_postings_csv
+
+
+def build_era_extractions_pdf(extractions: list[dict] = None) -> bytes:
+    """Build a summary PDF for all ERA extractions (one row per invoice)."""
+    if extractions is None:
+        extractions = db.get_all_extractions_for_export()
+
+    from reportlab.lib.units import mm
+
+    ts = datetime.now(timezone.utc).strftime("%d.%m.%Y %H:%M")
+    data = [ERA_EXTRACTION_HEADERS]
+    for extraction in extractions:
+        row = _parse_extraction_data(extraction)
+        data.append([row.get(col, "") or "" for col in ERA_EXTRACTION_COLUMNS])
+
+    col_widths = [35*mm, 12*mm, 10*mm, 16*mm, 16*mm, 14*mm, 14*mm,
+                  28*mm, 28*mm, 8*mm, 14*mm, 12*mm, 14*mm, 22*mm, 8*mm, 6*mm]
+
+    return _pdf_table(
+        data,
+        col_widths,
+        title="ERA Group — Invoice Extractions",
+        subtitle=f"Exported {ts}  •  {len(extractions)} record(s)",
+    )
+
+
+def build_era_single_extraction_pdf(extraction: dict) -> bytes:
+    """Build a detailed A4 PDF for a single extracted invoice."""
+    import json as _json
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.lib.enums import TA_LEFT, TA_RIGHT
+    from reportlab.platypus import (
+        SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable,
+    )
+
+    raw = extraction.get("extracted_data", "{}")
+    if isinstance(raw, str):
+        try:
+            data = _json.loads(raw)
+        except Exception:
+            data = {}
+    else:
+        data = raw or {}
+
+    buf = io.BytesIO()
+    usable_w = A4[0] - 40 * mm
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=20*mm, rightMargin=20*mm, topMargin=20*mm, bottomMargin=20*mm,
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "EraTitle", parent=styles["Normal"],
+        fontSize=15, fontName="Helvetica-Bold",
+        textColor=colors.HexColor("#00537F"), spaceAfter=3,
+    )
+    sub_style = ParagraphStyle(
+        "EraSub", parent=styles["Normal"],
+        fontSize=8, textColor=colors.HexColor("#64748B"), spaceAfter=10,
+    )
+    section_style = ParagraphStyle(
+        "EraSection", parent=styles["Normal"],
+        fontSize=10, fontName="Helvetica-Bold",
+        textColor=colors.HexColor("#1E3A5F"), spaceBefore=10, spaceAfter=5,
+    )
+    label_style = ParagraphStyle(
+        "EraLabel", parent=styles["Normal"],
+        fontSize=7, textColor=colors.HexColor("#64748B"),
+    )
+    value_style = ParagraphStyle(
+        "EraValue", parent=styles["Normal"],
+        fontSize=9, fontName="Helvetica-Bold",
+    )
+    cell_style = ParagraphStyle(
+        "EraCell", parent=styles["Normal"], fontSize=8, leading=10,
+    )
+
+    ts = datetime.now(timezone.utc).strftime("%d.%m.%Y %H:%M")
+    doc_type = extraction.get("extraction_type", "document").title()
+    conf_pct = f"{float(extraction.get('confidence_score') or 0) * 100:.0f}%"
+
+    story = [
+        Paragraph(extraction.get("filename", "ERA Extraction"), title_style),
+        Paragraph(f"{doc_type}  •  Confidence: {conf_pct}  •  Exported {ts}", sub_style),
+        HRFlowable(width="100%", thickness=1, color=colors.HexColor("#00537F"), spaceAfter=8),
+    ]
+
+    # --- Invoice header fields (key-value grid, 2 columns) ---
+    skip_keys = {
+        "line_items", "tables", "raw_text", "pages_processed", "text_blocks",
+        "dates_found", "amounts_found", "emails_found", "phones_found",
+        "urls_found", "total_characters", "total_tables", "total_rows",
+        "items", "item_count",
+    }
+    fields = [
+        (k.replace("_", " ").title(), str(v))
+        for k, v in data.items()
+        if k not in skip_keys and v is not None and v != "" and v != []
+    ]
+
+    if fields:
+        story.append(Paragraph("Invoice Details", section_style))
+        col_w = usable_w / 4
+        field_rows = []
+        for i in range(0, len(fields), 2):
+            pair = fields[i:i+2]
+            row = []
+            for label, value in pair:
+                row += [Paragraph(label, label_style), Paragraph(value, value_style)]
+            if len(pair) < 2:
+                row += ["", ""]
+            field_rows.append(row)
+
+        field_tbl = Table(field_rows, colWidths=[col_w] * 4)
+        field_tbl.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
+            ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#E2E8F0")),
+        ]))
+        story.append(field_tbl)
+
+    # --- Line items table ---
+    line_items = data.get("line_items", [])
+    if line_items:
+        story.append(Paragraph(f"Line Items ({len(line_items)})", section_style))
+        li_headers = ["#", "Description", "Qty", "Unit Price", "Tax", "Amount"]
+        li_col_widths = [8*mm, usable_w - 75*mm, 15*mm, 22*mm, 15*mm, 22*mm]
+        li_data = [li_headers]
+        for item in line_items:
+            li_data.append([
+                str(item.get("line_no", "")),
+                Paragraph(str(item.get("description", "")), cell_style),
+                str(item.get("quantity", "")),
+                str(item.get("unit_price", "")),
+                str(item.get("tax", "")),
+                str(item.get("amount", "")),
+            ])
+        li_tbl = Table(li_data, colWidths=li_col_widths, repeatRows=1)
+        li_tbl.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#00537F")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F0F6FF")]),
+            ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#CBD5E1")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("ALIGN", (2, 1), (-1, -1), "RIGHT"),
+        ]))
+        story.append(li_tbl)
+
+    doc.build(story)
+    return buf.getvalue()

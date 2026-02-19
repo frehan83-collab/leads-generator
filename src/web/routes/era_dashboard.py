@@ -224,14 +224,14 @@ def _detect_document_type(pdf_path: str) -> str:
 
         with pdfplumber.open(pdf_path) as pdf:
             # Get first page text
-            first_page_text = pdf.pages[0].extract_text().lower() if pdf.pages else ""
+            first_page_text = (pdf.pages[0].extract_text() or "").lower() if pdf.pages else ""
 
             # Simple heuristics
-            if any(word in first_page_text for word in ["invoice", "invoice no", "inv.", "bill"]):
+            if any(word in first_page_text for word in ["invoice", "invoice no", "inv.", "bill", "faktura", "fakturanr", "fakturanummer"]):
                 return "invoice"
-            elif any(word in first_page_text for word in ["contract", "agreement", "between"]):
+            elif any(word in first_page_text for word in ["contract", "agreement", "between", "kontrakt", "avtale"]):
                 return "contract"
-            elif any(word in first_page_text for word in ["balance sheet", "income statement", "cash flow", "p&l"]):
+            elif any(word in first_page_text for word in ["balance sheet", "income statement", "cash flow", "p&l", "balanse", "resultatregnskap"]):
                 return "statement"
 
     except Exception as exc:

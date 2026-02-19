@@ -2,11 +2,17 @@
 ERA Group Extractions — View and export extracted data.
 """
 
+import io
 import logging
 import json
 from flask import Blueprint, render_template, request, send_file, jsonify
 from src.database import db
-from src.export.csv_exporter import export_era_extractions_csv, build_era_extractions_xlsx
+from src.export.csv_exporter import (
+    export_era_extractions_csv,
+    build_era_extractions_xlsx,
+    build_era_extractions_pdf,
+    build_era_single_extraction_pdf,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -63,9 +69,8 @@ def export_csv():
     """Export all extractions to CSV."""
     db.init_db()
     extractions = db.get_all_extractions_for_export()
-
-    csv_bytes = export_era_extractions_csv(extractions)
-
+    csv_io = export_era_extractions_csv(extractions)
+    csv_bytes = io.BytesIO(csv_io.getvalue().encode("utf-8-sig"))
     return send_file(
         csv_bytes,
         mimetype="text/csv",
@@ -79,14 +84,76 @@ def export_xlsx():
     """Export all extractions to Excel."""
     db.init_db()
     extractions = db.get_all_extractions_for_export()
-
     xlsx_bytes = build_era_extractions_xlsx(extractions)
-
     return send_file(
-        xlsx_bytes,
+        io.BytesIO(xlsx_bytes),
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         as_attachment=True,
         download_name="era_extractions.xlsx",
+    )
+
+
+@era_extractions_bp.route("/extractions/export/pdf")
+def export_pdf():
+    """Export all extractions to PDF."""
+    db.init_db()
+    extractions = db.get_all_extractions_for_export()
+    pdf_bytes = build_era_extractions_pdf(extractions)
+    return send_file(
+        io.BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name="era_extractions.pdf",
+    )
+
+
+@era_extractions_bp.route("/extractions/<int:extraction_id>/export/csv")
+def export_single_csv(extraction_id: int):
+    """Export one extraction to CSV."""
+    db.init_db()
+    extractions = db.get_all_extractions_for_export()
+    extraction = next((e for e in extractions if e.get("id") == extraction_id), None)
+    if not extraction:
+        return "Extraction not found", 404
+    csv_io = export_era_extractions_csv([extraction])
+    csv_bytes = io.BytesIO(csv_io.getvalue().encode("utf-8-sig"))
+    name = (extraction.get("filename") or "extraction").replace(".pdf", "")
+    return send_file(csv_bytes, mimetype="text/csv", as_attachment=True, download_name=f"{name}.csv")
+
+
+@era_extractions_bp.route("/extractions/<int:extraction_id>/export/xlsx")
+def export_single_xlsx(extraction_id: int):
+    """Export one extraction to Excel (summary + line items)."""
+    db.init_db()
+    extractions = db.get_all_extractions_for_export()
+    extraction = next((e for e in extractions if e.get("id") == extraction_id), None)
+    if not extraction:
+        return "Extraction not found", 404
+    xlsx_bytes = build_era_extractions_xlsx([extraction])
+    name = (extraction.get("filename") or "extraction").replace(".pdf", "")
+    return send_file(
+        io.BytesIO(xlsx_bytes),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=f"{name}.xlsx",
+    )
+
+
+@era_extractions_bp.route("/extractions/<int:extraction_id>/export/pdf")
+def export_single_pdf(extraction_id: int):
+    """Export one extraction to a detailed PDF."""
+    db.init_db()
+    extractions = db.get_all_extractions_for_export()
+    extraction = next((e for e in extractions if e.get("id") == extraction_id), None)
+    if not extraction:
+        return "Extraction not found", 404
+    pdf_bytes = build_era_single_extraction_pdf(extraction)
+    name = (extraction.get("filename") or "extraction").replace(".pdf", "")
+    return send_file(
+        io.BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=f"{name}_extracted.pdf",
     )
 
 
