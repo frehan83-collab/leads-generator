@@ -18,33 +18,58 @@ FINN_SEARCH_URL = "https://www.finn.no/job/search"
 FINN_BASE_URL = "https://www.finn.no"
 
 
-def scrape_company_domain(posting_url: str) -> str | None:
+def scrape_company_domain(posting_url: str, browser=None) -> str | None:
     """
     Visit a finn.no job posting page and extract the company's website domain
     from the 'Hjemmeside' link in the sidebar.
     Returns e.g. 'leroyseafood.com', or None if not found.
+
+    Args:
+        posting_url: URL of the finn.no job posting
+        browser: Optional shared Playwright browser instance for reuse
     """
     try:
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=True)
-            page = browser.new_page()
-            page.goto(posting_url, wait_until="domcontentloaded", timeout=20000)
-            # Accept cookie banner if present
+        if browser is None:
+            # Standalone mode — create own browser
+            with sync_playwright() as pw:
+                br = pw.chromium.launch(headless=True)
+                page = br.new_page()
+                page.goto(posting_url, wait_until="domcontentloaded", timeout=20000)
+                try:
+                    page.click("button:has-text('Godta alle')", timeout=2000)
+                except Exception:
+                    pass
+                link_el = page.query_selector("a:has-text('Hjemmeside')")
+                if link_el:
+                    href = link_el.get_attribute("href") or ""
+                    if href:
+                        parsed = urlparse(href)
+                        domain = parsed.netloc.lstrip("www.")
+                        br.close()
+                        logger.debug("Found domain from finn.no posting: %s -> %s", posting_url, domain)
+                        return domain
+                br.close()
+        else:
+            # Shared browser mode — create a context, use it, close it
+            from src.scraper.browser_manager import USER_AGENT
+            ctx = browser.new_context(user_agent=USER_AGENT, locale="nb-NO")
+            page = ctx.new_page()
             try:
-                page.click("button:has-text('Godta alle')", timeout=2000)
-            except Exception:
-                pass
-            # Find the Hjemmeside link
-            link_el = page.query_selector("a:has-text('Hjemmeside')")
-            if link_el:
-                href = link_el.get_attribute("href") or ""
-                if href:
-                    parsed = urlparse(href)
-                    domain = parsed.netloc.lstrip("www.")
-                    browser.close()
-                    logger.debug("Found domain from finn.no posting: %s → %s", posting_url, domain)
-                    return domain
-            browser.close()
+                page.goto(posting_url, wait_until="domcontentloaded", timeout=20000)
+                try:
+                    page.click("button:has-text('Godta alle')", timeout=2000)
+                except Exception:
+                    pass
+                link_el = page.query_selector("a:has-text('Hjemmeside')")
+                if link_el:
+                    href = link_el.get_attribute("href") or ""
+                    if href:
+                        parsed = urlparse(href)
+                        domain = parsed.netloc.lstrip("www.")
+                        logger.debug("Found domain from finn.no posting: %s -> %s", posting_url, domain)
+                        return domain
+            finally:
+                ctx.close()
     except Exception as exc:
         logger.debug("scrape_company_domain error for %s: %s", posting_url, exc)
     return None
@@ -69,6 +94,37 @@ def _extract_finn_id(url: str) -> str:
         return match.group(1)
     match = re.search(r"/(\d+)$", url.rstrip("/"))
     return match.group(1) if match else url
+
+
+def _parse_relative_date(text: str) -> str | None:
+    """Parse Norwegian relative date strings to ISO date."""
+    from datetime import timedelta
+    text = text.strip().lower()
+    today = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    if text in ("i dag", "today"):
+        return today.strftime("%Y-%m-%d")
+    if text in ("i går", "yesterday"):
+        return (today - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    # "X dager siden"
+    match = re.match(r"(\d+)\s*dager?\s*siden", text)
+    if match:
+        days = int(match.group(1))
+        return (today - timedelta(days=days)).strftime("%Y-%m-%d")
+
+    # "X timer siden" (hours ago -> today)
+    match = re.match(r"(\d+)\s*timer?\s*siden", text)
+    if match:
+        return today.strftime("%Y-%m-%d")
+
+    # "DD.MM.YYYY" Norwegian date format
+    match = re.match(r"(\d{1,2})\.(\d{1,2})\.(\d{4})", text)
+    if match:
+        day, month, year = match.groups()
+        return f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+
+    return None
 
 
 def _parse_listing_page(page: Page, keyword: str) -> list[dict]:
@@ -109,6 +165,17 @@ def _parse_listing_page(page: Page, keyword: str) -> list[dict]:
             location_el = article.query_selector("li.min-w-0 span, .job-card__pills li:first-child span")
             location = location_el.inner_text().strip() if location_el else ""
 
+            # Published date
+            published_at = None
+            time_el = article.query_selector("time, [datetime]")
+            if time_el:
+                dt_attr = time_el.get_attribute("datetime")
+                if dt_attr:
+                    published_at = dt_attr[:10] if len(dt_attr) >= 10 else dt_attr
+                else:
+                    time_text = time_el.inner_text().strip()
+                    published_at = _parse_relative_date(time_text)
+
             if not title:
                 continue
 
@@ -123,7 +190,7 @@ def _parse_listing_page(page: Page, keyword: str) -> list[dict]:
                 "location": location,
                 "url": href,
                 "keyword_matched": keyword,
-                "published_at": None,
+                "published_at": published_at,
             })
         except Exception as exc:
             logger.debug("Error parsing article: %s", exc)
@@ -144,24 +211,22 @@ def _has_next_page(page: Page, current_page: int) -> bool:
     return False
 
 
-def scrape_keyword(keyword: str, max_pages: int = 5) -> Generator[dict, None, None]:
+def scrape_keyword(keyword: str, max_pages: int = 5, browser=None, known_ids: set = None) -> Generator[dict, None, None]:
     """
     Scrape finn.no for a given keyword across multiple pages.
     Yields one dict per job posting.
+
+    Args:
+        keyword: Search keyword
+        max_pages: Maximum number of pages to scrape
+        browser: Optional shared Playwright browser instance for reuse
+        known_ids: Optional set of external_ids already in DB (for incremental scraping)
     """
     logger.info("Scraping finn.no for keyword: '%s'", keyword)
     total = 0
 
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
-        context = browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
-            ),
-            locale="nb-NO",
-        )
+    def _scrape_with_context(context):
+        nonlocal total
         page = context.new_page()
 
         for page_num in range(1, max_pages + 1):
@@ -183,6 +248,14 @@ def scrape_keyword(keyword: str, max_pages: int = 5) -> Generator[dict, None, No
                     logger.info("No results on page %d for '%s', stopping.", page_num, keyword)
                     break
 
+                # Incremental: skip already-known postings
+                if known_ids is not None:
+                    new_postings = [p for p in postings if p["external_id"] not in known_ids]
+                    if len(new_postings) == 0:
+                        logger.info("All %d postings on page %d already known for '%s', stopping early.", len(postings), page_num, keyword)
+                        break
+                    postings = new_postings
+
                 for posting in postings:
                     yield posting
                     total += 1
@@ -198,18 +271,45 @@ def scrape_keyword(keyword: str, max_pages: int = 5) -> Generator[dict, None, No
                 logger.error("Error scraping page %d: %s", page_num, exc)
                 break
 
-        browser.close()
+    if browser is None:
+        # Standalone mode — create own browser
+        with sync_playwright() as pw:
+            br = pw.chromium.launch(headless=True)
+            context = br.new_context(
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                locale="nb-NO",
+            )
+            yield from _scrape_with_context(context)
+            br.close()
+    else:
+        # Shared browser mode
+        from src.scraper.browser_manager import USER_AGENT
+        context = browser.new_context(user_agent=USER_AGENT, locale="nb-NO")
+        try:
+            yield from _scrape_with_context(context)
+        finally:
+            context.close()
 
     logger.info("Scraped %d postings for keyword '%s'", total, keyword)
 
 
-def scrape_all_keywords(keywords: list[str], max_pages: int = 5) -> Generator[dict, None, None]:
+def scrape_all_keywords(keywords: list[str], max_pages: int = 5, browser=None, known_ids: set = None) -> Generator[dict, None, None]:
     """
     Scrape finn.no for all keywords. Deduplicates by finn_id across keywords.
+
+    Args:
+        keywords: List of search keywords
+        max_pages: Maximum pages per keyword
+        browser: Optional shared Playwright browser instance for reuse
+        known_ids: Optional set of external_ids already in DB (for incremental scraping)
     """
     seen_ids: set[str] = set()
     for keyword in keywords:
-        for posting in scrape_keyword(keyword.strip(), max_pages=max_pages):
+        for posting in scrape_keyword(keyword.strip(), max_pages=max_pages, browser=browser, known_ids=known_ids):
             finn_id = posting["finn_id"]
             if finn_id not in seen_ids:
                 seen_ids.add(finn_id)

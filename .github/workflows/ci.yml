@@ -24,6 +24,9 @@ jobs:
         run: |
           pip install \
             playwright \
+            playwright-stealth \
+            rapidfuzz \
+            anthropic \
             requests \
             schedule \
             python-dotenv \
@@ -47,6 +50,7 @@ jobs:
           echo "SNOV_CLIENT_SECRET=dummy" >> .env
           echo "RUN_TIME=09:30" >> .env
           echo "KEYWORDS=HR,rekruttering" >> .env
+          echo "ANTHROPIC_API_KEY=dummy" >> .env
 
       - name: Run tests
         run: pytest tests/ -v --tb=short

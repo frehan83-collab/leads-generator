@@ -14,6 +14,7 @@ def index():
     activity = db.get_recent_activity(15)
     postings_chart = db.get_postings_by_day(30)
     prospects_chart = db.get_prospects_by_day(30)
+    pipeline_trends = db.get_pipeline_run_trends(30)
 
     return render_template(
         "dashboard.html",
@@ -22,4 +23,5 @@ def index():
         activity=activity,
         postings_chart=postings_chart,
         prospects_chart=prospects_chart,
+        pipeline_trends=pipeline_trends,
     )

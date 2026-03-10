@@ -16,6 +16,8 @@ import time
 from typing import Optional, Generator
 import requests
 
+from src.utils.retry import retry
+
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://data.brreg.no/enhetsregisteret/api"
@@ -40,6 +42,7 @@ class BRREGClient:
             "User-Agent": "LeadsGenerator/1.0 (Lead generation tool)",
         })
 
+    @retry(max_attempts=3, base_delay=1.0, retryable_exceptions=(requests.exceptions.RequestException,))
     def _get(self, path: str, params: dict = None) -> dict:
         """Make GET request with rate limiting."""
         time.sleep(RATE_LIMIT_DELAY)

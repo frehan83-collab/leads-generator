@@ -7,10 +7,13 @@ used in the lead generation pipeline.
 import logging
 import time
 import os
+import threading
 from typing import Optional
 
 import requests
 from dotenv import load_dotenv
+
+from src.utils.retry import retry
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -30,6 +33,7 @@ class SnovClient:
         self.client_secret = client_secret or os.getenv("SNOV_CLIENT_SECRET", "")
         self._access_token: Optional[str] = None
         self._token_expires_at: float = 0.0
+        self._call_lock = threading.Lock()
 
         if not self.client_id:
             raise ValueError("SNOV_CLIENT_ID is not set")
@@ -64,27 +68,31 @@ class SnovClient:
     def _headers(self) -> dict:
         return {"Authorization": f"Bearer {self._get_token()}"}
 
+    @retry(max_attempts=3, base_delay=1.5, retryable_exceptions=(requests.exceptions.RequestException,))
     def _get(self, path: str, params: dict = None) -> dict:
-        time.sleep(RATE_LIMIT_DELAY)
-        resp = requests.get(
-            f"{BASE_URL}{path}",
-            headers=self._headers(),
-            params=params or {},
-            timeout=30,
-        )
-        resp.raise_for_status()
-        return resp.json()
+        with self._call_lock:
+            time.sleep(RATE_LIMIT_DELAY)
+            resp = requests.get(
+                f"{BASE_URL}{path}",
+                headers=self._headers(),
+                params=params or {},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            return resp.json()
 
+    @retry(max_attempts=3, base_delay=1.5, retryable_exceptions=(requests.exceptions.RequestException,))
     def _post(self, path: str, data: dict = None) -> dict:
-        time.sleep(RATE_LIMIT_DELAY)
-        resp = requests.post(
-            f"{BASE_URL}{path}",
-            headers=self._headers(),
-            json=data or {},
-            timeout=30,
-        )
-        resp.raise_for_status()
-        return resp.json()
+        with self._call_lock:
+            time.sleep(RATE_LIMIT_DELAY)
+            resp = requests.post(
+                f"{BASE_URL}{path}",
+                headers=self._headers(),
+                json=data or {},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            return resp.json()
 
     # ------------------------------------------------------------------
     # Async start/poll helpers

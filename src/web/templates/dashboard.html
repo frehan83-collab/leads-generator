@@ -49,6 +49,14 @@
     </div>
 </div>
 
+<!-- Pipeline Trends -->
+<div class="grid grid-cols-1 gap-4 mb-6">
+    <div class="card">
+        <h2 class="text-sm font-semibold text-slate-300 mb-4">Pipeline Trends (last 30 days)</h2>
+        <canvas id="pipelineTrendsChart" height="80"></canvas>
+    </div>
+</div>
+
 <!-- Bottom row: Activity feed + Pipeline runs -->
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
     <!-- Activity Feed -->
@@ -140,5 +148,38 @@ new Chart(document.getElementById('prospectsChart'), {
     },
     options: chartDefaults
 });
+
+const trendsData = {{ pipeline_trends | tojson }};
+
+if (trendsData.length > 0) {
+    new Chart(document.getElementById('pipelineTrendsChart'), {
+        type: 'line',
+        data: {
+            labels: trendsData.map(d => d.day),
+            datasets: [
+                {
+                    label: 'Postings Scraped',
+                    data: trendsData.map(d => d.total_scraped),
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                },
+                {
+                    label: 'Prospects Found',
+                    data: trendsData.map(d => d.total_prospects),
+                    borderColor: '#8b5cf6',
+                    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                }
+            ]
+        },
+        options: {
+            ...chartDefaults,
+            plugins: { legend: { display: true, labels: { color: '#94a3b8' } } }
+        }
+    });
+}
 </script>
 {% endblock %}

@@ -39,6 +39,36 @@ def _extract_job_id(url: str) -> str:
     return match.group(1) if match else url
 
 
+def _parse_nav_date(text: str) -> str | None:
+    """Parse NAV date formats to ISO date."""
+    text = text.strip()
+
+    # ISO format: 2024-03-15
+    if re.match(r"\d{4}-\d{2}-\d{2}", text):
+        return text[:10]
+
+    # Norwegian: "12. mars 2025" or "5. januar 2024"
+    months_no = {
+        "januar": "01", "februar": "02", "mars": "03", "april": "04",
+        "mai": "05", "juni": "06", "juli": "07", "august": "08",
+        "september": "09", "oktober": "10", "november": "11", "desember": "12",
+    }
+    match = re.match(r"(\d{1,2})\.\s*(\w+)\s+(\d{4})", text)
+    if match:
+        day, month_name, year = match.groups()
+        month_num = months_no.get(month_name.lower())
+        if month_num:
+            return f"{year}-{month_num}-{day.zfill(2)}"
+
+    # DD.MM.YYYY
+    match = re.match(r"(\d{1,2})\.(\d{1,2})\.(\d{4})", text)
+    if match:
+        day, month, year = match.groups()
+        return f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+
+    return None
+
+
 def _parse_listing_page(page: Page, keyword: str) -> list[dict]:
     """
     Parse all job cards on a NAV search result page.
@@ -149,6 +179,18 @@ def _parse_listing_page(page: Page, keyword: str) -> list[dict]:
                         location = line.strip()
                         break
 
+            # Published date
+            published_at = None
+            date_match = re.search(r"Publisert[:\s]+([^\n]+)", container_text, re.IGNORECASE)
+            if date_match:
+                published_at = _parse_nav_date(date_match.group(1).strip())
+            if not published_at:
+                time_el = container.query_selector("time")
+                if time_el:
+                    dt_attr = time_el.get_attribute("datetime")
+                    if dt_attr:
+                        published_at = dt_attr[:10] if len(dt_attr) >= 10 else dt_attr
+
             results.append({
                 "nav_id": job_id,
                 "external_id": job_id,
@@ -160,7 +202,7 @@ def _parse_listing_page(page: Page, keyword: str) -> list[dict]:
                 "location": location,
                 "url": href,
                 "keyword_matched": keyword,
-                "published_at": None,
+                "published_at": published_at,
                 "scraped_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
             })
 
@@ -197,14 +239,16 @@ def _has_next_page(page: Page, current_page: int) -> bool:
     return False
 
 
-def scrape_keyword(keyword: str, max_pages: int = 5) -> Generator[dict, None, None]:
+def scrape_keyword(keyword: str, max_pages: int = 5, browser=None, known_ids: set = None) -> Generator[dict, None, None]:
     """
     Scrape arbeidsplassen.nav.no for a given keyword across multiple pages.
     Yields one dict per job posting.
 
     Args:
-        keyword: Search keyword (e.g. "seafood", "aquaculture", "sjømat")
+        keyword: Search keyword (e.g. "seafood", "aquaculture", "sjoemat")
         max_pages: Maximum number of pages to scrape
+        browser: Optional shared Playwright browser instance for reuse
+        known_ids: Optional set of external_ids already in DB (for incremental scraping)
 
     Yields:
         Job posting dict with keys:
@@ -216,16 +260,8 @@ def scrape_keyword(keyword: str, max_pages: int = 5) -> Generator[dict, None, No
     logger.info("Scraping NAV Arbeidsplassen for keyword: '%s'", keyword)
     total = 0
 
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
-        context = browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
-            ),
-            locale="nb-NO",
-        )
+    def _scrape_with_context(context):
+        nonlocal total
         page = context.new_page()
 
         for page_num in range(max_pages):
@@ -248,6 +284,14 @@ def scrape_keyword(keyword: str, max_pages: int = 5) -> Generator[dict, None, No
                     logger.info("No results on page %d for '%s', stopping.", page_num + 1, keyword)
                     break
 
+                # Incremental: skip already-known postings
+                if known_ids is not None:
+                    new_postings = [p for p in postings if p["external_id"] not in known_ids]
+                    if len(new_postings) == 0:
+                        logger.info("All %d postings on page %d already known for '%s', stopping early.", len(postings), page_num + 1, keyword)
+                        break
+                    postings = new_postings
+
                 for posting in postings:
                     yield posting
                     total += 1
@@ -267,18 +311,41 @@ def scrape_keyword(keyword: str, max_pages: int = 5) -> Generator[dict, None, No
                 logger.error("Error scraping page %d: %s", page_num + 1, exc)
                 break
 
-        browser.close()
+    if browser is None:
+        # Standalone mode — create own browser
+        with sync_playwright() as pw:
+            br = pw.chromium.launch(headless=True)
+            context = br.new_context(
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                locale="nb-NO",
+            )
+            yield from _scrape_with_context(context)
+            br.close()
+    else:
+        # Shared browser mode
+        from src.scraper.browser_manager import USER_AGENT
+        context = browser.new_context(user_agent=USER_AGENT, locale="nb-NO")
+        try:
+            yield from _scrape_with_context(context)
+        finally:
+            context.close()
 
     logger.info("Scraped %d postings from NAV for keyword '%s'", total, keyword)
 
 
-def scrape_all_keywords(keywords: list[str], max_pages: int = 5) -> Generator[dict, None, None]:
+def scrape_all_keywords(keywords: list[str], max_pages: int = 5, browser=None, known_ids: set = None) -> Generator[dict, None, None]:
     """
     Scrape NAV for all keywords. Deduplicates by nav_id across keywords.
 
     Args:
         keywords: List of search keywords
         max_pages: Maximum pages per keyword
+        browser: Optional shared Playwright browser instance for reuse
+        known_ids: Optional set of external_ids already in DB (for incremental scraping)
 
     Yields:
         Job posting dicts
@@ -286,7 +353,7 @@ def scrape_all_keywords(keywords: list[str], max_pages: int = 5) -> Generator[di
     seen_ids: set[str] = set()
 
     for keyword in keywords:
-        for posting in scrape_keyword(keyword.strip(), max_pages=max_pages):
+        for posting in scrape_keyword(keyword.strip(), max_pages=max_pages, browser=browser, known_ids=known_ids):
             job_id = posting["nav_id"]
             if job_id not in seen_ids:
                 seen_ids.add(job_id)

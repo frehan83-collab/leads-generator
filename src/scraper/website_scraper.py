@@ -196,11 +196,103 @@ def _get_mailto_contacts(page) -> list[dict]:
         return []
 
 
-def scrape_emails_from_website(domain: str, timeout_sec: int = 20) -> list[dict]:
+def _scrape_pages(page, domain: str, base_url: str, timeout_sec: int, found: dict) -> None:
+    """Core scraping logic — visit contact pages and extract emails into `found` dict."""
+    for path in CONTACT_PATHS:
+        url = base_url + path
+        try:
+            page.goto(url, wait_until="domcontentloaded", timeout=timeout_sec * 1000)
+
+            # Accept cookie banner if present
+            try:
+                page.click("button:has-text('Godta alle')", timeout=1500)
+            except Exception:
+                try:
+                    page.click("button:has-text('Aksepter')", timeout=1000)
+                except Exception:
+                    pass
+
+            # Strategy A: mailto: links with surrounding context
+            mailto_contacts = _get_mailto_contacts(page)
+            for contact in mailto_contacts:
+                email = contact.get("email", "").lower()
+                context_text = contact.get("context", "")
+                if not email or not EMAIL_PATTERN.match(email):
+                    continue
+                if not _is_valid_email(email, domain):
+                    continue
+
+                score = _score_email(email)
+                title = _extract_title_from_text(context_text)
+
+                # Parse name from email local part if firstname.lastname
+                name = ""
+                local = email.split("@")[0]
+                if "." in local:
+                    parts = local.split(".")
+                    if len(parts) == 2 and all(p.isalpha() for p in parts):
+                        name = f"{parts[0].capitalize()} {parts[1].capitalize()}"
+
+                if email not in found or found[email]["score"] < score:
+                    found[email] = {"score": score, "title": title, "name": name}
+                    logger.debug(
+                        "Found mailto: %s title='%s' (score %d)", email, title, score
+                    )
+
+            # Strategy B: scan visible body text for bare email addresses
+            body_text = page.inner_text("body")
+            for match in EMAIL_PATTERN.finditer(body_text):
+                email = match.group(0).lower()
+                if not _is_valid_email(email, domain):
+                    continue
+                if email in found:
+                    continue  # already have it with context
+
+                score = _score_email(email)
+                # Try to grab surrounding text (+/-150 chars) for title hint
+                start = max(0, match.start() - 150)
+                end = min(len(body_text), match.end() + 150)
+                snippet = body_text[start:end]
+                title = _extract_title_from_text(snippet)
+
+                name = ""
+                local = email.split("@")[0]
+                if "." in local:
+                    parts = local.split(".")
+                    if len(parts) == 2 and all(p.isalpha() for p in parts):
+                        name = f"{parts[0].capitalize()} {parts[1].capitalize()}"
+
+                found[email] = {"score": score, "title": title, "name": name}
+                logger.debug(
+                    "Found text email: %s title='%s' (score %d)", email, title, score
+                )
+
+            # Stop early if we have enough high-quality personal emails
+            best = max((v["score"] for v in found.values()), default=0)
+            if best >= 10 and len(found) >= 2:
+                logger.debug(
+                    "Found enough personal emails for %s, stopping early", domain
+                )
+                break
+
+        except PWTimeout:
+            logger.debug("Timeout on %s", url)
+            continue
+        except Exception as exc:
+            logger.debug("Error visiting %s: %s", url, exc)
+            continue
+
+
+def scrape_emails_from_website(domain: str, timeout_sec: int = 20, browser=None) -> list[dict]:
     """
     Visit the company website and return a ranked list of contacts.
     Each contact is a dict: {"email": str, "title": str, "name": str}
     Returns at most 5 contacts, best-scored first.
+
+    Args:
+        domain: Company domain to scrape
+        timeout_sec: Timeout in seconds per page load
+        browser: Optional shared Playwright browser instance for reuse
     """
     if not domain:
         return []
@@ -210,103 +302,30 @@ def scrape_emails_from_website(domain: str, timeout_sec: int = 20) -> list[dict]
     found: dict[str, dict] = {}
 
     try:
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=True)
-            context = browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/124.0.0.0 Safari/537.36"
-                ),
-                locale="nb-NO",
-            )
-            page = context.new_page()
-
-            for path in CONTACT_PATHS:
-                url = base_url + path
-                try:
-                    page.goto(url, wait_until="domcontentloaded", timeout=timeout_sec * 1000)
-
-                    # Accept cookie banner if present
-                    try:
-                        page.click("button:has-text('Godta alle')", timeout=1500)
-                    except Exception:
-                        try:
-                            page.click("button:has-text('Aksepter')", timeout=1000)
-                        except Exception:
-                            pass
-
-                    # Strategy A: mailto: links with surrounding context
-                    mailto_contacts = _get_mailto_contacts(page)
-                    for contact in mailto_contacts:
-                        email = contact.get("email", "").lower()
-                        context_text = contact.get("context", "")
-                        if not email or not EMAIL_PATTERN.match(email):
-                            continue
-                        if not _is_valid_email(email, domain):
-                            continue
-
-                        score = _score_email(email)
-                        title = _extract_title_from_text(context_text)
-
-                        # Parse name from email local part if firstname.lastname
-                        name = ""
-                        local = email.split("@")[0]
-                        if "." in local:
-                            parts = local.split(".")
-                            if len(parts) == 2 and all(p.isalpha() for p in parts):
-                                name = f"{parts[0].capitalize()} {parts[1].capitalize()}"
-
-                        if email not in found or found[email]["score"] < score:
-                            found[email] = {"score": score, "title": title, "name": name}
-                            logger.debug(
-                                "Found mailto: %s title='%s' (score %d)", email, title, score
-                            )
-
-                    # Strategy B: scan visible body text for bare email addresses
-                    body_text = page.inner_text("body")
-                    for match in EMAIL_PATTERN.finditer(body_text):
-                        email = match.group(0).lower()
-                        if not _is_valid_email(email, domain):
-                            continue
-                        if email in found:
-                            continue  # already have it with context
-
-                        score = _score_email(email)
-                        # Try to grab surrounding text (±150 chars) for title hint
-                        start = max(0, match.start() - 150)
-                        end = min(len(body_text), match.end() + 150)
-                        snippet = body_text[start:end]
-                        title = _extract_title_from_text(snippet)
-
-                        name = ""
-                        local = email.split("@")[0]
-                        if "." in local:
-                            parts = local.split(".")
-                            if len(parts) == 2 and all(p.isalpha() for p in parts):
-                                name = f"{parts[0].capitalize()} {parts[1].capitalize()}"
-
-                        found[email] = {"score": score, "title": title, "name": name}
-                        logger.debug(
-                            "Found text email: %s title='%s' (score %d)", email, title, score
-                        )
-
-                    # Stop early if we have enough high-quality personal emails
-                    best = max((v["score"] for v in found.values()), default=0)
-                    if best >= 10 and len(found) >= 2:
-                        logger.debug(
-                            "Found enough personal emails for %s, stopping early", domain
-                        )
-                        break
-
-                except PWTimeout:
-                    logger.debug("Timeout on %s", url)
-                    continue
-                except Exception as exc:
-                    logger.debug("Error visiting %s: %s", url, exc)
-                    continue
-
-            browser.close()
+        if browser is None:
+            # Standalone mode — create own browser
+            with sync_playwright() as pw:
+                br = pw.chromium.launch(headless=True)
+                context = br.new_context(
+                    user_agent=(
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/124.0.0.0 Safari/537.36"
+                    ),
+                    locale="nb-NO",
+                )
+                page = context.new_page()
+                _scrape_pages(page, domain, base_url, timeout_sec, found)
+                br.close()
+        else:
+            # Shared browser mode
+            from src.scraper.browser_manager import USER_AGENT
+            ctx = browser.new_context(user_agent=USER_AGENT, locale="nb-NO")
+            page = ctx.new_page()
+            try:
+                _scrape_pages(page, domain, base_url, timeout_sec, found)
+            finally:
+                ctx.close()
 
     except Exception as exc:
         logger.warning("scrape_emails_from_website failed for %s: %s", domain, exc)

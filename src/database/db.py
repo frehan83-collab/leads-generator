@@ -245,6 +245,14 @@ def init_db() -> None:
                 ON era_extractions(extraction_type);
             CREATE INDEX IF NOT EXISTS idx_era_corrections_extraction
                 ON era_corrections(extraction_id);
+
+            CREATE TABLE IF NOT EXISTS website_cache (
+                domain      TEXT UNIQUE NOT NULL,
+                contacts_json TEXT NOT NULL,
+                cached_at   TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_website_cache_domain
+                ON website_cache(domain);
         """)
     logger.info("Database initialised at %s", DB_PATH)
 
@@ -345,6 +353,15 @@ def get_postings_for_export() -> list[dict]:
             "SELECT * FROM job_postings ORDER BY scraped_at DESC"
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def get_existing_external_ids(source: str) -> set:
+    """Return set of external_id values already in DB for a given source."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT external_id FROM job_postings WHERE source = ?", (source,)
+        ).fetchall()
+    return {row[0] for row in rows if row[0]}
 
 
 # ------------------------------------------------------------------
@@ -615,6 +632,25 @@ def get_recent_pipeline_runs(limit: int = 10) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_pipeline_run_trends(days: int = 30) -> list[dict]:
+    """Return daily aggregated pipeline stats over last N days."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT
+                DATE(started_at) as day,
+                SUM(postings_scraped) as total_scraped,
+                SUM(COALESCE(prospects_found, 0)) as total_prospects,
+                COUNT(*) as run_count
+            FROM pipeline_runs
+            WHERE started_at >= DATE('now', ?)
+              AND status = 'completed'
+            GROUP BY DATE(started_at)
+            ORDER BY day""",
+            (f"-{days} days",),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 # ------------------------------------------------------------------
 # Dashboard aggregation
 # ------------------------------------------------------------------
@@ -852,6 +888,37 @@ def get_companies_by_nace(nace_code: str, limit: int = 100) -> list[dict]:
             (f"{nace_code}%", limit),
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+# ------------------------------------------------------------------
+# Website cache
+# ------------------------------------------------------------------
+
+def get_cached_contacts(domain: str, ttl_days: int = 7) -> Optional[list]:
+    """Return cached contacts for domain, or None if expired/missing."""
+    import json
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT contacts_json, cached_at FROM website_cache WHERE domain = ?",
+            (domain,)
+        ).fetchone()
+    if not row:
+        return None
+    cached_at = datetime.fromisoformat(row["cached_at"])
+    age_days = (datetime.now(timezone.utc).replace(tzinfo=None) - cached_at).days
+    if age_days > ttl_days:
+        return None
+    return json.loads(row["contacts_json"])
+
+
+def cache_contacts(domain: str, contacts: list) -> None:
+    """Store or update cached contacts for a domain."""
+    import json
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO website_cache (domain, contacts_json, cached_at) VALUES (?, ?, ?)",
+            (domain, json.dumps(contacts), _now()),
+        )
 
 
 # ------------------------------------------------------------------

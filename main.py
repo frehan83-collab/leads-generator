@@ -107,7 +107,7 @@ if __name__ == "__main__":
     parser.add_argument("--cli", action="store_true", help="Start CLI scheduler (no web)")
     parser.add_argument("--now", action="store_true", help="Run pipeline immediately")
     parser.add_argument("--status", action="store_true", help="Show status and account info")
-    parser.add_argument("--sources", nargs="+", choices=["finn", "nav"], help="Sources to scrape (default: finn nav)")
+    parser.add_argument("--sources", nargs="+", choices=["finn", "nav", "karrierestart", "jobbnorge"], help="Sources to scrape (default: finn nav)")
     parser.add_argument("--host", default="127.0.0.1", help="Web server host (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=5000, help="Web server port (default: 5000)")
     args = parser.parse_args()

@@ -6,6 +6,8 @@ Auto-exports CSV and tracks pipeline runs in the database.
 
 import logging
 import os
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -14,11 +16,13 @@ from dotenv import load_dotenv
 from src.scraper.finn_scraper import scrape_all_keywords as scrape_finn, scrape_company_domain
 from src.scraper.nav_scraper import scrape_all_keywords as scrape_nav
 from src.scraper.website_scraper import scrape_emails_from_website
+from src.scraper.browser_manager import BrowserManager
 from src.snov.client import SnovClient
 from src.brreg.client import BRREGClient
 from src.database import db
 from src.emails.drafter import auto_draft_for_new_prospect
 from src.export.csv_exporter import auto_export_after_run
+from src.notifications.webhook import send_pipeline_alert
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -64,6 +68,7 @@ class LeadPipeline:
             "drafts_created": 0,
             "errors": 0,
         }
+        self._stats_lock = threading.Lock()
         self._run_id: Optional[int] = None
 
     def run(self, keywords: list[str]) -> dict:
@@ -82,16 +87,25 @@ class LeadPipeline:
             if not self.snov_list_id:
                 self.snov_list_id = self._ensure_snov_list()
 
-            # Step 1: Collect ALL postings from all sources (Playwright contexts close cleanly)
-            postings = self._scrape_all_sources(keywords)
-            self._stats["postings_scraped"] = len(postings)
-            logger.info("Scraped %d total postings from %d sources", len(postings), len(self.sources))
-            for source, count in self._stats["postings_by_source"].items():
-                logger.info("  - %s: %d postings", source, count)
+            with BrowserManager() as bm:
+                # Step 1: Collect ALL postings from all sources (shared browser)
+                postings = self._scrape_all_sources(keywords, browser=bm.browser)
+                self._stats["postings_scraped"] = len(postings)
+                logger.info("Scraped %d total postings from %d sources", len(postings), len(self.sources))
+                for source, count in self._stats["postings_by_source"].items():
+                    logger.info("  - %s: %d postings", source, count)
 
-            # Step 2: Process each posting (domain resolution, enrichment, outreach)
-            for posting in postings:
-                self._process_posting(posting)
+                # Step 2: Process postings (sequential — browser contexts are not thread-safe)
+                for posting in postings:
+                    try:
+                        self._process_posting(posting, browser=bm.browser)
+                    except Exception as exc:
+                        logger.error(
+                            "Error processing posting %s: %s",
+                            posting.get("external_id", "?"), exc,
+                        )
+                        with self._stats_lock:
+                            self._stats["errors"] += 1
 
             # Step 3: Auto-export CSV
             csv_path = auto_export_after_run()
@@ -145,6 +159,12 @@ class LeadPipeline:
         except Exception as exc:
             logger.warning("Failed to update pipeline run: %s", exc)
 
+        # Send webhook alert
+        try:
+            send_pipeline_alert(self._stats, status, error_message=error_message)
+        except Exception as exc:
+            logger.debug("Webhook alert error: %s", exc)
+
     # ------------------------------------------------------------------
     # Internal steps
     # ------------------------------------------------------------------
@@ -160,10 +180,15 @@ class LeadPipeline:
         list_id = self.snov.create_list(list_name)
         return list_id
 
-    def _scrape_all_sources(self, keywords: list[str]) -> list[dict]:
+    def _scrape_all_sources(self, keywords: list[str], browser=None) -> list[dict]:
         """
         Scrape job postings from all configured sources.
+        Uses incremental scraping to skip already-known postings.
         Returns combined list of postings with source tracking.
+
+        Args:
+            keywords: List of search keywords
+            browser: Optional shared Playwright browser instance for reuse
         """
         all_postings = []
         seen_ids = set()  # Cross-source deduplication by URL
@@ -172,9 +197,13 @@ class LeadPipeline:
             logger.info("Scraping source: %s", source)
             source_count = 0
 
+            # Incremental: load known IDs for this source
+            known_ids = db.get_existing_external_ids(source)
+            logger.info("Source %s: %d existing IDs in DB", source, len(known_ids))
+
             try:
                 if source == 'finn':
-                    for posting in scrape_finn(keywords):
+                    for posting in scrape_finn(keywords, known_ids=known_ids, browser=browser):
                         # Check for duplicates by URL
                         if posting["url"] not in seen_ids:
                             seen_ids.add(posting["url"])
@@ -182,7 +211,23 @@ class LeadPipeline:
                             source_count += 1
 
                 elif source == 'nav':
-                    for posting in scrape_nav(keywords):
+                    for posting in scrape_nav(keywords, known_ids=known_ids, browser=browser):
+                        if posting["url"] not in seen_ids:
+                            seen_ids.add(posting["url"])
+                            all_postings.append(posting)
+                            source_count += 1
+
+                elif source == 'karrierestart':
+                    from src.scraper.karrierestart_scraper import scrape_all_keywords as scrape_karrierestart
+                    for posting in scrape_karrierestart(keywords, known_ids=known_ids, browser=browser):
+                        if posting["url"] not in seen_ids:
+                            seen_ids.add(posting["url"])
+                            all_postings.append(posting)
+                            source_count += 1
+
+                elif source == 'jobbnorge':
+                    from src.scraper.jobbnorge_scraper import scrape_all_keywords as scrape_jobbnorge
+                    for posting in scrape_jobbnorge(keywords, known_ids=known_ids, browser=browser):
                         if posting["url"] not in seen_ids:
                             seen_ids.add(posting["url"])
                             all_postings.append(posting)
@@ -223,8 +268,41 @@ class LeadPipeline:
             if row:
                 org_number = row[0]
                 logger.debug("Matched '%s' to BRREG org=%s (from local DB)", company_name, org_number)
-                self._stats["brreg_matches"] += 1
+                with self._stats_lock:
+                    self._stats["brreg_matches"] += 1
                 return org_number
+
+        # Fuzzy match against local companies table
+        try:
+            from rapidfuzz import fuzz, process
+
+            with db.get_connection() as conn:
+                all_companies = conn.execute(
+                    "SELECT org_number, name FROM companies"
+                ).fetchall()
+
+            if all_companies:
+                company_names = {row["name"]: row["org_number"] for row in all_companies}
+                match = process.extractOne(
+                    company_name,
+                    company_names.keys(),
+                    scorer=fuzz.token_sort_ratio,
+                    score_cutoff=85,
+                )
+                if match:
+                    matched_name, score, _ = match
+                    org_number = company_names[matched_name]
+                    logger.info(
+                        "Fuzzy matched '%s' -> '%s' (score=%d, org=%s)",
+                        company_name, matched_name, score, org_number,
+                    )
+                    with self._stats_lock:
+                        self._stats["brreg_matches"] += 1
+                    return org_number
+        except ImportError:
+            logger.debug("rapidfuzz not installed, skipping fuzzy match")
+        except Exception as exc:
+            logger.debug("Fuzzy match error for '%s': %s", company_name, exc)
 
         # Try BRREG API name search as fallback
         try:
@@ -239,17 +317,36 @@ class LeadPipeline:
             if resp.ok:
                 companies = resp.json().get("_embedded", {}).get("enheter", [])
                 if companies:
-                    org_number = companies[0].get("organisasjonsnummer")
+                    if len(companies) == 1:
+                        org_number = companies[0].get("organisasjonsnummer")
+                    else:
+                        # Pick best fuzzy match from API results
+                        try:
+                            from rapidfuzz import fuzz
+                            best_score = 0
+                            best_org = None
+                            for c in companies[:5]:  # Check top 5
+                                score = fuzz.token_sort_ratio(cleaned, c.get("navn", ""))
+                                if score > best_score:
+                                    best_score = score
+                                    best_org = c.get("organisasjonsnummer")
+                            if best_score >= 70:
+                                org_number = best_org
+                            else:
+                                org_number = companies[0].get("organisasjonsnummer")
+                        except ImportError:
+                            org_number = companies[0].get("organisasjonsnummer")
                     if org_number:
                         logger.debug("BRREG API matched '%s' to org=%s", company_name, org_number)
-                        self._stats["brreg_matches"] += 1
+                        with self._stats_lock:
+                            self._stats["brreg_matches"] += 1
                         return org_number
         except Exception as exc:
             logger.debug("BRREG API enrichment failed for '%s': %s", company_name, exc)
 
         return None
 
-    def _process_posting(self, posting: dict) -> None:
+    def _process_posting(self, posting: dict, browser=None) -> None:
         """Process a single job posting through the full pipeline."""
         company_name = posting.get("company_name", "").strip()
         source = posting.get("source", "unknown")
@@ -264,7 +361,8 @@ class LeadPipeline:
         if posting_id is None:
             logger.debug("Posting %s (%s) already in DB, skipping", external_id, source)
             return
-        self._stats["postings_new"] += 1
+        with self._stats_lock:
+            self._stats["postings_new"] += 1
 
         logger.info("Processing [%s]: %s -- %s", source, company_name, posting.get("title"))
 
@@ -276,10 +374,11 @@ class LeadPipeline:
                 posting["org_number"] = org_number
 
         # 3. Resolve company domain
-        domain = self._resolve_domain(company_name, posting)
+        domain = self._resolve_domain(company_name, posting, browser=browser)
         if not domain:
             logger.warning("Could not resolve domain for '%s'", company_name)
-            self._stats["errors"] += 1
+            with self._stats_lock:
+                self._stats["errors"] += 1
             return
 
         # Update posting with domain and org_number
@@ -288,13 +387,19 @@ class LeadPipeline:
                 "UPDATE job_postings SET company_domain = ?, org_number = ? WHERE id = ?",
                 (domain, org_number, posting_id),
             )
-        self._stats["domains_resolved"] += 1
+        with self._stats_lock:
+            self._stats["domains_resolved"] += 1
 
         # 3. Primary: scrape emails directly from the company website
         # Returns list of {"email": str, "title": str, "name": str}
-        website_contacts = scrape_emails_from_website(domain)
+        # Check website cache first
+        website_contacts = db.get_cached_contacts(domain)
+        if website_contacts is None:
+            website_contacts = scrape_emails_from_website(domain, browser=browser)
+            db.cache_contacts(domain, website_contacts or [])
         if website_contacts:
-            self._stats["prospects_found"] += len(website_contacts)
+            with self._stats_lock:
+                self._stats["prospects_found"] += len(website_contacts)
             for contact in website_contacts:
                 self._process_raw_email(
                     contact["email"],
@@ -315,7 +420,8 @@ class LeadPipeline:
         prospects = self.snov.get_prospects_by_domain(
             domain, positions=TARGET_POSITIONS
         )
-        self._stats["prospects_found"] += len(prospects)
+        with self._stats_lock:
+            self._stats["prospects_found"] += len(prospects)
 
         for prospect_data in prospects:
             self._process_prospect(prospect_data, domain, posting_id, posting)
@@ -342,7 +448,7 @@ class LeadPipeline:
         name = _re.sub(r"\s+", " ", name).strip()
         return name
 
-    def _resolve_domain(self, company_name: str, posting: dict) -> Optional[str]:
+    def _resolve_domain(self, company_name: str, posting: dict, browser=None) -> Optional[str]:
         """Try multiple strategies to resolve the company domain."""
         # Strategy 1: Already in posting data
         if posting.get("company_domain"):
@@ -351,7 +457,7 @@ class LeadPipeline:
         # Strategy 2: Scrape the company's homepage link from the finn.no posting page
         posting_url = posting.get("url")
         if posting_url:
-            domain = scrape_company_domain(posting_url)
+            domain = scrape_company_domain(posting_url, browser=browser)
             if domain:
                 return domain
 
@@ -380,7 +486,8 @@ class LeadPipeline:
             logger.debug("Email %s already in DB, skipping", email)
             return
 
-        self._stats["emails_found"] += 1
+        with self._stats_lock:
+            self._stats["emails_found"] += 1
 
         # Try to verify via Snov.io (uses credits but prevents bounces)
         smtp_status = "unknown"
@@ -394,7 +501,8 @@ class LeadPipeline:
             logger.info("Email %s failed verification, skipping", email)
             return
 
-        self._stats["emails_verified"] += 1
+        with self._stats_lock:
+            self._stats["emails_verified"] += 1
 
         # Derive first/last name: prefer scraped_name, else parse from email
         first_name, last_name = "", ""
@@ -435,7 +543,8 @@ class LeadPipeline:
         try:
             draft_id = auto_draft_for_new_prospect(prospect_id, posting_id)
             if draft_id:
-                self._stats["drafts_created"] += 1
+                with self._stats_lock:
+                    self._stats["drafts_created"] += 1
         except Exception as exc:
             logger.warning("Failed to auto-draft for %s: %s", email, exc)
 
@@ -443,7 +552,8 @@ class LeadPipeline:
         if self.snov_list_id:
             added = self.snov.add_prospect_to_list(self.snov_list_id, prospect_record)
             if added:
-                self._stats["prospects_added_to_snov"] += 1
+                with self._stats_lock:
+                    self._stats["prospects_added_to_snov"] += 1
                 db.log_outreach({
                     "prospect_id": prospect_id,
                     "campaign_id": self.snov_list_id,
@@ -475,7 +585,8 @@ class LeadPipeline:
 
         email = email_result["email"]
         smtp_status = email_result.get("smtp_status", "unknown")
-        self._stats["emails_found"] += 1
+        with self._stats_lock:
+            self._stats["emails_found"] += 1
 
         # 6. Skip if already contacted
         if db.email_exists(email):
@@ -494,7 +605,8 @@ class LeadPipeline:
                 logger.info("Email %s failed verification, skipping", email)
                 return
 
-        self._stats["emails_verified"] += 1
+        with self._stats_lock:
+            self._stats["emails_verified"] += 1
 
         # 8. Store prospect in DB
         prospect_record = {
@@ -519,7 +631,8 @@ class LeadPipeline:
         try:
             draft_id = auto_draft_for_new_prospect(prospect_id, posting_id)
             if draft_id:
-                self._stats["drafts_created"] += 1
+                with self._stats_lock:
+                    self._stats["drafts_created"] += 1
         except Exception as exc:
             logger.warning("Failed to auto-draft for %s: %s", email, exc)
 
@@ -527,7 +640,8 @@ class LeadPipeline:
         if self.snov_list_id:
             added = self.snov.add_prospect_to_list(self.snov_list_id, prospect_record)
             if added:
-                self._stats["prospects_added_to_snov"] += 1
+                with self._stats_lock:
+                    self._stats["prospects_added_to_snov"] += 1
                 db.log_outreach({
                     "prospect_id": prospect_id,
                     "campaign_id": self.snov_list_id,

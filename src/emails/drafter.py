@@ -7,10 +7,12 @@ status='draft' and must be reviewed + approved before sending.
 """
 
 import logging
+import os
 from typing import Optional
 
 from src.database import db
 from src.emails.templates import TEMPLATES
+from src.emails.ai_drafter import generate_ai_opener
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +57,22 @@ def auto_draft_for_new_prospect(
     except Exception as exc:
         logger.warning("Failed to generate draft for prospect %d: %s", prospect_id, exc)
         return None
+
+    # Try AI personalization — replace first body paragraph after greeting
+    if os.getenv("ANTHROPIC_API_KEY"):
+        ai_opener = generate_ai_opener(
+            prospect_name=prospect.get("full_name", ""),
+            prospect_title=prospect.get("position", ""),
+            company_name=prospect.get("company_name", ""),
+            job_posting_title=posting.get("title", ""),
+            keyword=posting.get("keyword_matched", ""),
+        )
+        if ai_opener:
+            paragraphs = body.split("\n\n")
+            if len(paragraphs) >= 2:
+                paragraphs[1] = ai_opener
+                body = "\n\n".join(paragraphs)
+            tpl_name = f"ai_{tpl_name}"
 
     draft_data = {
         "prospect_id": prospect_id,
