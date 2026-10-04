@@ -124,8 +124,10 @@ class LeadPipeline:
             workers = _settings.pipeline_workers
             if workers <= 1:
                 with BrowserManager() as bm:
-                    for posting in postings:
+                    for i, posting in enumerate(postings, 1):
                         self._process_posting_guarded(posting, bm.browser)
+                        if i % 25 == 0:
+                            self._heartbeat()
             else:
                 logger.info(
                     "Processing %d postings with %d workers", len(postings), workers
@@ -139,6 +141,9 @@ class LeadPipeline:
             try:
                 from src.scoring.lead_scorer import score_all_domains
 
+                previously_hot = {
+                    r["domain"] for r in db.get_lead_scores(10000, min_score=70)
+                }
                 score_stats = score_all_domains()
                 logger.info(
                     "Lead scoring v2: %d domains (%d hot, %d warm)",
@@ -146,6 +151,21 @@ class LeadPipeline:
                     score_stats["hot"],
                     score_stats["warm"],
                 )
+                newly_hot = [
+                    r["domain"]
+                    for r in db.get_lead_scores(10000, min_score=70)
+                    if r["domain"] not in previously_hot
+                ]
+                if newly_hot:
+                    logger.warning("New hot domains: %s", ", ".join(newly_hot[:10]))
+                    try:
+                        send_pipeline_alert(
+                            {"hot_domains": len(newly_hot)},
+                            status="hot_leads",
+                            error_message=f"New hot leads: {', '.join(newly_hot[:10])}",
+                        )
+                    except Exception as exc:
+                        logger.debug("Hot-lead alert failed: %s", exc)
             except Exception as exc:
                 logger.warning("Lead scoring v2 failed: %s", exc)
 
@@ -242,14 +262,37 @@ class LeadPipeline:
         try:
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 futures = {pool.submit(_work, p): p for p in postings}
-                for future in as_completed(futures):
+                for i, future in enumerate(as_completed(futures), 1):
                     future.result()  # raises fatal Snov errors to abort the run
+                    if i % 25 == 0:
+                        self._heartbeat()
         finally:
             for bm in _managers:
                 try:
                     bm.__exit__(None, None, None)
                 except Exception:
                     pass
+
+    def _heartbeat(self) -> None:
+        """Write current stats to the run row so live views stay truthful."""
+        if not self._run_id:
+            return
+        try:
+            with self._stats_lock:
+                data = {
+                    "postings_scraped": self._stats["postings_scraped"],
+                    "postings_new": self._stats["postings_new"],
+                    "domains_resolved": self._stats["domains_resolved"],
+                    "prospects_found": self._stats["prospects_found"],
+                    "emails_found": self._stats["emails_found"],
+                    "emails_verified": self._stats["emails_verified"],
+                    "prospects_added": self._stats["prospects_added_to_snov"],
+                    "drafts_created": self._stats["drafts_created"],
+                    "errors": self._stats["errors"],
+                }
+            db.update_pipeline_run(self._run_id, data)
+        except Exception as exc:
+            logger.debug("Heartbeat write failed: %s", exc)
 
     def _check_snov_balance(self, min_credits: int) -> None:
         """Abort early when the Snov.io balance can't fund a run."""

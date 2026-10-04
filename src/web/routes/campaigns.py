@@ -66,6 +66,11 @@ def draft_detail(draft_id):
     # F5: AI variants
     variants = db.get_draft_variants(draft_id)
 
+    # Deliverability gate (content score, computed live)
+    from src.outreach.deliverability import check_draft
+
+    gate = check_draft(draft.get("subject", ""), draft.get("body", ""))
+
     return render_template(
         "draft_detail.html",
         draft=draft,
@@ -74,7 +79,18 @@ def draft_detail(draft_id):
         sequence=sequence,
         linkedin_msg=linkedin_msg,
         variants=variants,
+        gate=gate,
     )
+
+
+@campaigns_bp.route("/campaigns/review-next")
+def review_next():
+    """Redirect to the highest-value unreviewed draft (or report clear)."""
+    draft_id = db.get_next_draft_for_review()
+    if not draft_id:
+        flash("Review queue is clear — no unreviewed drafts.", "success")
+        return redirect(url_for("campaigns.campaigns"))
+    return redirect(url_for("campaigns.draft_detail", draft_id=draft_id))
 
 
 @campaigns_bp.route("/campaigns/<int:draft_id>/approve", methods=["POST"])

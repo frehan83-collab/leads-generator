@@ -65,6 +65,7 @@ python main.py --host 0.0.0.0 --port 8080
 | `FROM_EMAIL` / `FROM_NAME` | `fredrik.hansen@sperton.com` | sender identity |
 | `FOLLOWUP_AUTO_SEND` | `false` | `true` = follow-ups pre-approved AND auto-sent; `false` (safe) = drafts await review |
 | `FOLLOWUP_MIN_DAYS` / `FOLLOWUP_MAX_STEP` | `3` / `3` | follow-up timing and depth |
+| `DELIVERABILITY_BLOCK_BELOW` | `0` | refuse sends scoring below this (0 = warn only) |
 | `ANTHROPIC_API_KEY` | — | AI openers (falls back to templates) |
 | `FLASK_SECRET` | ephemeral + warning | set a real value in production |
 | `DASHBOARD_USER` / `DASHBOARD_PASS` | unset (open) | basic-auth login for the dashboard |
@@ -87,12 +88,15 @@ Central defaults and validation live in `src/config.py`.
   exclude addresses from both send paths; scheduled-for dates are honored by both.
 - Resend retries only transport errors and rate limits — never API rejections
   (a 5xx may already have sent).
+- Deliverability gate scores every draft (spam triggers, caps, links,
+  subject/body length, opt-out line) with a visible badge; optional
+  hard block via `DELIVERABILITY_BLOCK_BELOW`.
 - All secrets come from the environment — no committed fallbacks.
 
 ## Testing
 
 ```bash
-pytest tests/ -v                        # full suite (233 tests)
+pytest tests/ -v                        # full suite (242 tests)
 pytest tests/test_hardening.py -v       # security/safety regression tests
 pytest tests/test_pipeline_run.py -v    # mocked end-to-end pipeline runs
 ruff check src tests                    # lint (enforced in CI)

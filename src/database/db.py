@@ -1756,6 +1756,25 @@ def get_audit_log(limit: int = 100) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_next_draft_for_review() -> int | None:
+    """Oldest unreviewed draft at the highest-scored company.
+
+    Clears the draft backlog in value order so review time goes
+    to the best leads first. Returns draft id or None when clear.
+    """
+    with get_connection() as conn:
+        row = conn.execute(
+            """SELECT ed.id FROM email_drafts ed
+               JOIN prospects p ON ed.prospect_id = p.id
+               LEFT JOIN lead_scores ls
+                 ON LOWER(ls.domain) = LOWER(p.company_domain)
+               WHERE ed.status = 'draft'
+               ORDER BY COALESCE(ls.score, 0) DESC, ed.created_at ASC
+               LIMIT 1""",
+        ).fetchone()
+    return row[0] if row else None
+
+
 # ------------------------------------------------------------------
 # Inbox processor (reply idempotency)
 # ------------------------------------------------------------------

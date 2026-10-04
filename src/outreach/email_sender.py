@@ -99,6 +99,18 @@ def send_email_direct(draft_id: int) -> dict:
             "error": "Job posting expired — refresh the lead against a live role first",
         }
 
+    from src.outreach.deliverability import check_draft, gate_allows
+
+    gate = check_draft(draft.get("subject", ""), draft.get("body", ""))
+    if not gate_allows(gate["score"]):
+        return {
+            "success": False,
+            "error": f"Deliverability gate blocked (score {gate['score']}): "
+            + "; ".join(gate["issues"][:3]),
+        }
+    for issue in gate["issues"]:
+        logger.warning("Draft #%d deliverability: %s", draft_id, issue)
+
     if db.is_suppressed(draft.get("prospect_email") or ""):
         return {"success": False, "error": "Recipient is suppressed (bounce/complaint)"}
 

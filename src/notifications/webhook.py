@@ -26,6 +26,8 @@ def send_pipeline_alert(
     # Build alert title
     if status == "failed":
         title = "Pipeline Run FAILED"
+    elif status == "hot_leads":
+        title = "Hot New Leads"
     elif stats.get("postings_new", 0) == 0 and status == "completed":
         title = "Pipeline Run: No New Postings Found"
     elif status == "completed":

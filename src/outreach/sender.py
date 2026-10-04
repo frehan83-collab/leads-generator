@@ -80,6 +80,22 @@ def send_approved_drafts() -> dict:
             stats["skipped_expired"] += 1
             logger.info("Skipping draft #%d: job posting expired", draft["id"])
             continue
+        from src.outreach.deliverability import check_draft, gate_allows
+
+        gate = check_draft(draft.get("subject", ""), draft.get("body", ""))
+        if not gate_allows(gate["score"]):
+            stats["failed"] += 1
+            stats["errors"].append(
+                f"Draft #{draft['id']} blocked by deliverability gate"
+            )
+            logger.warning(
+                "Draft #%d blocked by deliverability gate: %s",
+                draft["id"],
+                gate["issues"],
+            )
+            continue
+        for issue in gate["issues"]:
+            logger.debug("Draft #%d deliverability: %s", draft["id"], issue)
         try:
             prospect = {
                 "email": draft["prospect_email"],

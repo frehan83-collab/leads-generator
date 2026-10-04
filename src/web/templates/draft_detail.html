@@ -27,6 +27,19 @@
 </div>
 {% endif %}
 
+{% if gate and gate.verdict != 'pass' %}
+<div class="mb-6 px-4 py-3 rounded-xl text-sm animate-card {% if gate.verdict == 'fail' %}flash-error{% else %}flash-warning{% endif %}">
+    <div class="flex items-center gap-2 font-semibold mb-1">
+        Deliverability {{ gate.score }}/100 ({{ gate.verdict }})
+    </div>
+    <ul class="list-disc ml-5 space-y-0.5 text-[13px]">
+        {% for issue in gate.issues %}
+        <li>{{ issue }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
     <!-- Main: Email Preview & Edit -->
     <div class="lg:col-span-2 space-y-4 animate-card" style="animation-delay: 80ms">

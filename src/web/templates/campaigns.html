@@ -8,6 +8,12 @@
         <h1 class="text-2xl font-bold text-white tracking-tight">Email Campaigns</h1>
         <p class="text-slate-500 text-sm mt-1">Review, approve, and send personalised outreach emails</p>
     </div>
+    <div class="flex items-center gap-2">
+        {% if status_counts.get('draft', 0) > 0 %}
+        <a href="/campaigns/review-next" class="btn-primary !text-xs flex items-center gap-1.5">
+            Review next ({{ status_counts.get('draft', 0) }})
+        </a>
+        {% endif %}
     {% if status_counts.get('approved', 0) > 0 %}
     <div class="flex items-center gap-2">
         <form method="post" action="/campaigns/email-all-approved">

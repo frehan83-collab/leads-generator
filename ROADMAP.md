@@ -163,3 +163,12 @@ production-grade for unattended multi-user operation.
 - [x] Follow-up query excludes replied/bounced/suppressed (was open-only)
 - [x] Scheduler (every N min, only if configured) + `main.py --check-inbox`
 - [x] 11 new tests; suite 222 → 233 green; ruff clean
+
+### World-class batch 7 — sales acceleration
+- [x] Pipeline heartbeat (run-row stats every 25 completions, both modes)
+- [x] Deliverability gate (`src/outreach/deliverability.py`: spam/ caps/
+  links/ length/ opt-out scoring + badge on drafts; optional hard block;
+  enforced in both senders)
+- [x] Review-next queue (highest-score unreviewed draft first + header button)
+- [x] Hot-lead alerts (newly-hot domains → webhook, dedicated title)
+- [x] 9 new tests; suite 233 → 242 green; ruff clean
