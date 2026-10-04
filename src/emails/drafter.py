@@ -59,13 +59,31 @@ def auto_draft_for_new_prospect(
         return None
 
     # Try AI personalization — replace first body paragraph after greeting
+    # F5: Enriched with company context from BRREG
+    company_context = None
+    ai_context_json = None
     if os.getenv("ANTHROPIC_API_KEY"):
+        org_num = posting.get("org_number") or ""
+        if org_num:
+            try:
+                company_data = db.get_company_by_org_number(org_num)
+                if company_data:
+                    company_context = {
+                        "employee_count": company_data.get("employee_count"),
+                        "nace_code": company_data.get("nace_code"),
+                        "nace_description": company_data.get("nace_description"),
+                        "city": company_data.get("city"),
+                    }
+            except Exception:
+                pass
+
         ai_opener = generate_ai_opener(
             prospect_name=prospect.get("full_name", ""),
             prospect_title=prospect.get("position", ""),
             company_name=prospect.get("company_name", ""),
             job_posting_title=posting.get("title", ""),
             keyword=posting.get("keyword_matched", ""),
+            company_context=company_context,
         )
         if ai_opener:
             paragraphs = body.split("\n\n")
@@ -73,6 +91,9 @@ def auto_draft_for_new_prospect(
                 paragraphs[1] = ai_opener
                 body = "\n\n".join(paragraphs)
             tpl_name = f"ai_{tpl_name}"
+            if company_context:
+                import json
+                ai_context_json = json.dumps(company_context)
 
     draft_data = {
         "prospect_id": prospect_id,
@@ -85,12 +106,32 @@ def auto_draft_for_new_prospect(
 
     draft_id = db.insert_email_draft(draft_data)
     if draft_id:
+        # F5: Store AI context metadata if enriched
+        if ai_context_json:
+            db.update_email_draft(draft_id, {"ai_context": ai_context_json})
+
         logger.info(
             "Created draft #%d for %s (%s template)",
             draft_id,
             prospect.get("email", "?"),
             tpl_name,
         )
+
+        # F4: Auto-create LinkedIn connection request if prospect has LinkedIn URL
+        if prospect.get("linkedin_url"):
+            try:
+                from src.emails.linkedin_templates import connection_request
+                li_text = connection_request(prospect, posting)
+                db.insert_linkedin_message({
+                    "prospect_id": prospect_id,
+                    "draft_id": draft_id,
+                    "message_type": "connection_request",
+                    "message_text": li_text,
+                })
+                logger.info("Created LinkedIn message for prospect %d", prospect_id)
+            except Exception as exc:
+                logger.warning("Failed to create LinkedIn message: %s", exc)
+
     return draft_id
 
 

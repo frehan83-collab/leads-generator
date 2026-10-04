@@ -2,56 +2,116 @@
 {% block title %}Campaigns{% endblock %}
 
 {% block content %}
-<div class="mb-6">
-    <h1 class="text-2xl font-bold text-white">Email Campaigns</h1>
-    <p class="text-slate-400 text-sm mt-1">Auto-drafted outreach emails — review and approve before sending</p>
+<!-- Header -->
+<div class="flex items-center justify-between mb-6 animate-card">
+    <div>
+        <h1 class="text-2xl font-bold text-white tracking-tight">Email Campaigns</h1>
+        <p class="text-slate-500 text-sm mt-1">Review, approve, and send personalised outreach emails</p>
+    </div>
+    {% if status_counts.get('approved', 0) > 0 %}
+    <div class="flex items-center gap-2">
+        <form method="post" action="/campaigns/email-all-approved">
+            <button type="submit" class="flex items-center gap-2 px-4 py-2 bg-violet-600/90 hover:bg-violet-600 rounded-xl text-sm font-semibold text-white transition-all hover:shadow-lg hover:shadow-violet-600/20">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"/></svg>
+                Send All ({{ status_counts.get('approved', 0) }})
+            </button>
+        </form>
+        <form method="post" action="/campaigns/send-all-approved">
+            <button type="submit" class="flex items-center gap-2 px-4 py-2 bg-emerald-600/90 hover:bg-emerald-600 rounded-xl text-sm font-semibold text-white transition-all hover:shadow-lg hover:shadow-emerald-600/20">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"/></svg>
+                Snov All ({{ status_counts.get('approved', 0) }})
+            </button>
+        </form>
+    </div>
+    {% endif %}
 </div>
 
-<!-- Status Tabs -->
-<div class="flex gap-2 mb-5 flex-wrap">
-    <a href="/campaigns" class="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors {% if not status_filter %}bg-blue-600 text-white{% else %}bg-slate-700 text-slate-300 hover:bg-slate-600{% endif %}">
+<!-- Status Filter Tabs -->
+<div class="flex items-center gap-2 mb-5 flex-wrap animate-card" style="animation-delay: 50ms">
+    <a href="/campaigns" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all
+        {% if not status_filter %}bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30{% else %}text-slate-500 hover:text-slate-300 hover:bg-slate-800/60{% endif %}">
         All
-        <span class="ml-1 text-xs opacity-70">{{ status_counts.values() | sum }}</span>
+        <span class="ml-1 opacity-60 font-mono">{{ status_counts.values() | sum }}</span>
     </a>
     {% for s, count in status_counts.items() %}
-    <a href="/campaigns?status={{ s }}" class="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors {% if status_filter == s %}bg-blue-600 text-white{% else %}bg-slate-700 text-slate-300 hover:bg-slate-600{% endif %}">
+    <a href="/campaigns?status={{ s }}" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all
+        {% if status_filter == s %}bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30{% else %}text-slate-500 hover:text-slate-300 hover:bg-slate-800/60{% endif %}">
         {{ s | capitalize }}
-        <span class="ml-1 text-xs opacity-70">{{ count }}</span>
+        <span class="ml-1 opacity-60 font-mono">{{ count }}</span>
     </a>
     {% endfor %}
 </div>
 
 <!-- Draft Cards -->
 {% if drafts %}
-<div class="space-y-3">
+<div class="space-y-2.5">
     {% for draft in drafts %}
-    <div class="card hover:border-slate-600 transition-colors">
-        <div class="flex items-start justify-between gap-4">
+    <div class="card group animate-card" style="animation-delay: {{ (loop.index0 + 2) * 40 }}ms">
+        <div class="flex items-start gap-4">
+            <!-- Avatar initial -->
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold flex-shrink-0
+                {% if draft.status == 'sent' %}bg-emerald-500/15 text-emerald-400
+                {% elif draft.status == 'approved' %}bg-blue-500/15 text-blue-400
+                {% else %}bg-slate-700/60 text-slate-400{% endif %}">
+                {{ (draft.company_name or '?')[:1] | upper }}
+            </div>
+
+            <!-- Content -->
             <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-3 mb-1">
-                    <span class="text-xs px-2 py-0.5 rounded-full font-medium badge-{{ draft.status }}">{{ draft.status }}</span>
-                    <span class="text-xs text-slate-500">{{ draft.template_name | replace('_', ' ') | title }}</span>
-                    <span class="text-xs text-slate-600">{{ (draft.created_at or '')[:10] }}</span>
+                <div class="flex items-center gap-2.5 mb-1.5">
+                    <span class="badge badge-{{ draft.status }}">{{ draft.status }}</span>
+                    {% if draft.sequence_step and draft.sequence_step > 1 %}
+                    <span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24;">Step {{ draft.sequence_step }}</span>
+                    {% endif %}
+                    {% if draft.status == 'sent' %}
+                        {% if draft.open_count and draft.open_count > 0 %}
+                        <span class="flex items-center gap-1 text-[11px] text-blue-400" title="Opened {{ draft.open_count }}x">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                            {{ draft.open_count }}
+                        </span>
+                        {% endif %}
+                        {% if draft.click_count and draft.click_count > 0 %}
+                        <span class="flex items-center gap-1 text-[11px] text-emerald-400" title="Clicked {{ draft.click_count }}x">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.042 21.672L13.684 16.6m0 0l-2.51 2.225.569-9.47 5.227 7.917-3.286-.672zM12 2.25V4.5m5.834.166l-1.591 1.591M20.25 10.5H18M7.757 14.743l-1.59 1.59M6 10.5H3.75m4.007-4.243l-1.59-1.59"/></svg>
+                            {{ draft.click_count }}
+                        </span>
+                        {% endif %}
+                    {% endif %}
+                    <span class="text-[11px] text-slate-600 font-mono">{{ (draft.created_at or '')[:10] }}</span>
                 </div>
-                <div class="font-semibold text-slate-200 truncate">{{ draft.subject }}</div>
-                <div class="text-sm text-slate-400 mt-0.5">
-                    To: <span class="text-blue-400">{{ draft.prospect_email }}</span>
-                    {% if draft.prospect_title %}&bull; {{ draft.prospect_title }}{% endif %}
-                    &bull; <span class="font-medium">{{ draft.company_name }}</span>
+
+                <!-- Subject line -->
+                <div class="text-[13px] font-semibold text-slate-200 truncate mb-0.5">{{ draft.subject }}</div>
+
+                <!-- Recipient -->
+                <div class="flex items-center gap-1.5 text-xs text-slate-500">
+                    <span class="text-blue-400/80">{{ draft.prospect_email }}</span>
+                    {% if draft.prospect_title %}
+                    <span class="text-slate-700">&bull;</span>
+                    <span>{{ draft.prospect_title }}</span>
+                    {% endif %}
+                    <span class="text-slate-700">&bull;</span>
+                    <span class="text-slate-400 font-medium">{{ draft.company_name }}</span>
                 </div>
+
                 {% if draft.job_title %}
-                <div class="text-xs text-slate-500 mt-0.5">Job: {{ draft.job_title }}{% if draft.job_location %} &bull; {{ draft.job_location }}{% endif %}</div>
+                <div class="text-[11px] text-slate-600 mt-1">{{ draft.job_title }}{% if draft.job_location %} &bull; {{ draft.job_location }}{% endif %}</div>
                 {% endif %}
             </div>
-            <div class="flex items-center gap-2 flex-shrink-0">
-                <a href="/campaigns/{{ draft.id }}" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-medium text-slate-300 transition-colors">
-                    View
-                </a>
+
+            <!-- Actions -->
+            <div class="flex items-center gap-1.5 flex-shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
+                <a href="/campaigns/{{ draft.id }}" class="btn-secondary !py-1.5 !px-3 !text-xs">View</a>
                 {% if draft.status == 'draft' %}
                 <form method="post" action="/campaigns/{{ draft.id }}/approve" class="inline">
-                    <button type="submit" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-xs font-medium text-white transition-colors">
-                        Approve
-                    </button>
+                    <button type="submit" class="btn-primary !py-1.5 !px-3 !text-xs">Approve</button>
+                </form>
+                {% elif draft.status == 'approved' %}
+                <form method="post" action="/campaigns/{{ draft.id }}/send-email" class="inline">
+                    <button type="submit" class="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600/90 hover:bg-violet-600 rounded-lg text-xs font-semibold text-white transition-all">Email</button>
+                </form>
+                <form method="post" action="/campaigns/{{ draft.id }}/send" class="inline">
+                    <button type="submit" class="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/90 hover:bg-emerald-600 rounded-lg text-xs font-semibold text-white transition-all">Snov</button>
                 </form>
                 {% endif %}
             </div>
@@ -60,23 +120,43 @@
     {% endfor %}
 </div>
 {% else %}
-<div class="card text-center py-12">
-    <div class="text-slate-500 text-lg mb-2">No email drafts yet</div>
-    <div class="text-slate-600 text-sm">Run the pipeline to auto-generate personalised email drafts for each new prospect.</div>
-    <a href="/settings" class="inline-block mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium text-white transition-colors">Go to Settings &rarr;</a>
+<!-- Empty state -->
+<div class="card text-center py-16 animate-card" style="animation-delay: 100ms">
+    <div class="w-16 h-16 rounded-2xl bg-slate-800/80 flex items-center justify-center mx-auto mb-5">
+        <svg class="w-7 h-7 text-slate-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"/></svg>
+    </div>
+    <div class="text-slate-400 text-base font-medium mb-1.5">No email drafts yet</div>
+    <div class="text-slate-600 text-sm max-w-sm mx-auto mb-5">Run the pipeline to automatically generate personalised email drafts for each new prospect.</div>
+    <a href="/settings" class="btn-primary inline-flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        Go to Settings
+    </a>
 </div>
 {% endif %}
 
 <!-- Pagination -->
 {% if total_pages > 1 %}
-<div class="flex items-center justify-between mt-4 text-sm">
-    <div class="text-slate-500">Page {{ page }} of {{ total_pages }}</div>
-    <div class="flex gap-2">
+<div class="flex items-center justify-between mt-5 animate-card" style="animation-delay: 300ms">
+    <div class="text-xs text-slate-600 font-mono">
+        Page {{ page }} of {{ total_pages }}
+    </div>
+    <div class="flex items-center gap-1.5">
         {% if page > 1 %}
-        <a href="?page={{ page - 1 }}&status={{ status_filter }}" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-slate-300 transition-colors">&larr; Prev</a>
+        <a href="?page={{ page - 1 }}&status={{ status_filter }}" class="btn-secondary !py-1.5 !px-3 !text-xs">&larr; Previous</a>
         {% endif %}
+        {% for p in range(1, total_pages + 1) %}
+            {% if p == page %}
+            <span class="w-8 h-8 rounded-lg bg-blue-500/15 text-blue-400 flex items-center justify-center text-xs font-semibold">{{ p }}</span>
+            {% elif p <= 3 or p > total_pages - 2 or (p >= page - 1 and p <= page + 1) %}
+            <a href="?page={{ p }}&status={{ status_filter }}" class="w-8 h-8 rounded-lg text-slate-500 hover:bg-slate-800/60 hover:text-slate-300 flex items-center justify-center text-xs transition-all">{{ p }}</a>
+            {% elif p == 4 and page > 5 %}
+            <span class="text-slate-700 text-xs px-1">&hellip;</span>
+            {% elif p == total_pages - 2 and page < total_pages - 4 %}
+            <span class="text-slate-700 text-xs px-1">&hellip;</span>
+            {% endif %}
+        {% endfor %}
         {% if page < total_pages %}
-        <a href="?page={{ page + 1 }}&status={{ status_filter }}" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-slate-300 transition-colors">Next &rarr;</a>
+        <a href="?page={{ page + 1 }}&status={{ status_filter }}" class="btn-secondary !py-1.5 !px-3 !text-xs">Next &rarr;</a>
         {% endif %}
     </div>
 </div>

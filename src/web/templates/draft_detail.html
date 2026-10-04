@@ -2,123 +2,334 @@
 {% block title %}Draft #{{ draft.id }}{% endblock %}
 
 {% block content %}
-<div class="mb-6">
-    <div class="flex items-center gap-2 text-sm text-slate-500 mb-3">
-        <a href="/campaigns" class="hover:text-slate-300">Campaigns</a>
-        <span>&rarr;</span>
-        <span class="text-slate-300">Draft #{{ draft.id }}</span>
-    </div>
-    <div class="flex items-center justify-between">
-        <h1 class="text-2xl font-bold text-white">Email Draft</h1>
-        <span class="text-sm px-3 py-1 rounded-full font-medium badge-{{ draft.status }}">{{ draft.status | capitalize }}</span>
-    </div>
+<!-- Breadcrumb -->
+<div class="flex items-center gap-2 text-xs text-slate-600 mb-4 animate-card">
+    <a href="/campaigns" class="hover:text-slate-400 transition-colors">Campaigns</a>
+    <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+    <span class="text-slate-400">Draft #{{ draft.id }}</span>
 </div>
 
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-    <!-- Main: Edit form -->
-    <div class="lg:col-span-2 space-y-4">
+<!-- Header -->
+<div class="flex items-center justify-between mb-6 animate-card" style="animation-delay: 40ms">
+    <div class="flex items-center gap-3">
+        <h1 class="text-xl font-bold text-white tracking-tight">Email Draft</h1>
+        {% if draft.sequence_step and draft.sequence_step > 1 %}
+        <span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24;">Step {{ draft.sequence_step }}</span>
+        {% endif %}
+    </div>
+    <span class="badge badge-{{ draft.status }} !px-3 !py-1">{{ draft.status | capitalize }}</span>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+    <!-- Main: Email Preview & Edit -->
+    <div class="lg:col-span-2 space-y-4 animate-card" style="animation-delay: 80ms">
         <form method="post" action="/campaigns/{{ draft.id }}/edit">
-            <div class="card space-y-4">
-                <div>
-                    <label class="block text-xs font-medium text-slate-400 mb-1">To</label>
-                    <div class="text-slate-200">
-                        {{ draft.prospect_name or 'Unknown' }}
-                        &lt;<a href="mailto:{{ draft.prospect_email }}" class="text-blue-400 hover:text-blue-300">{{ draft.prospect_email }}</a>&gt;
-                        {% if draft.prospect_title %}<span class="text-slate-500 text-sm"> &bull; {{ draft.prospect_title }}</span>{% endif %}
+            <div class="card !p-0 overflow-hidden">
+                <!-- Email header bar -->
+                <div class="bg-surface-100 border-b border-slate-800/60 px-6 py-4 space-y-3">
+                    <div class="flex items-center gap-3">
+                        <!-- Avatar -->
+                        <div class="w-9 h-9 rounded-lg bg-blue-500/15 flex items-center justify-center text-sm font-bold text-blue-400 flex-shrink-0">
+                            {{ (draft.company_name or '?')[:1] | upper }}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="text-sm text-slate-200 font-medium">
+                                {{ draft.prospect_name or 'Unknown' }}
+                                <span class="text-slate-600 font-normal">&lt;<a href="mailto:{{ draft.prospect_email }}" class="text-blue-400/80 hover:text-blue-400">{{ draft.prospect_email }}</a>&gt;</span>
+                            </div>
+                            <div class="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
+                                {% if draft.prospect_title %}{{ draft.prospect_title }} <span class="text-slate-700">&bull;</span>{% endif %}
+                                <span class="font-medium text-slate-400">{{ draft.company_name }}</span>
+                                {% if draft.company_domain %}
+                                <span class="text-slate-700">&bull;</span>
+                                <a href="https://{{ draft.company_domain }}" target="_blank" class="text-blue-400/70 hover:text-blue-400">{{ draft.company_domain }}</a>
+                                {% endif %}
+                            </div>
+                        </div>
                     </div>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-400 mb-1">Company</label>
-                    <div class="text-slate-200">{{ draft.company_name }}
-                        {% if draft.company_domain %}<span class="text-slate-500 text-sm">— <a href="https://{{ draft.company_domain }}" target="_blank" class="text-blue-400 hover:text-blue-300">{{ draft.company_domain }}</a></span>{% endif %}
+
+                    {% if draft.job_title %}
+                    <div class="flex items-center gap-2 text-xs text-slate-500 pl-12">
+                        <svg class="w-3.5 h-3.5 text-slate-600 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 00.75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 00-3.413-.387m4.5 8.006c-.194.165-.42.295-.673.38A23.978 23.978 0 0112 15.75c-2.648 0-5.195-.429-7.577-1.22a2.016 2.016 0 01-.673-.38m0 0A2.18 2.18 0 013 12.489V8.706c0-1.081.768-2.015 1.837-2.175a48.111 48.111 0 013.413-.387m7.5 0V5.25A2.25 2.25 0 0013.5 3h-3a2.25 2.25 0 00-2.25 2.25v.894m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
+                        {{ draft.job_title }}{% if draft.job_location %} &bull; {{ draft.job_location }}{% endif %}
+                        {% if draft.job_url %}<a href="{{ draft.job_url }}" target="_blank" class="text-blue-400/70 hover:text-blue-400 ml-1">View &nearr;</a>{% endif %}
                     </div>
-                </div>
-                {% if draft.job_title %}
-                <div>
-                    <label class="block text-xs font-medium text-slate-400 mb-1">Related Job Posting</label>
-                    <div class="text-slate-200">{{ draft.job_title }}
-                        {% if draft.job_location %}<span class="text-slate-500"> &bull; {{ draft.job_location }}</span>{% endif %}
-                        {% if draft.job_url %}&bull; <a href="{{ draft.job_url }}" target="_blank" class="text-blue-400 hover:text-blue-300 text-sm">finn.no &rarr;</a>{% endif %}
-                    </div>
-                </div>
-                {% endif %}
-                <hr class="border-slate-700">
-                <div>
-                    <label class="block text-xs font-medium text-slate-400 mb-1">Subject</label>
-                    <input type="text" name="subject" value="{{ draft.subject }}" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-400 mb-1">Body</label>
-                    <textarea name="body" rows="16" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500 font-mono whitespace-pre-wrap">{{ draft.body }}</textarea>
-                </div>
-                <div class="flex gap-3">
-                    <button type="submit" class="px-4 py-2 bg-slate-600 hover:bg-slate-500 rounded-lg text-sm font-medium text-slate-200 transition-colors">Save Changes</button>
-                    {% if draft.status == 'draft' %}
-                    <button type="button" onclick="document.getElementById('approve-form').submit()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium text-white transition-colors">Save & Approve</button>
                     {% endif %}
+                </div>
+
+                <!-- Subject + Body -->
+                <div class="px-6 py-5 space-y-4">
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Subject</label>
+                        <input type="text" name="subject" value="{{ draft.subject }}" class="input w-full">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Body</label>
+                        <textarea name="body" rows="18" class="input w-full font-mono text-[12.5px] leading-relaxed whitespace-pre-wrap resize-y">{{ draft.body }}</textarea>
+                    </div>
+                </div>
+
+                <!-- Action bar -->
+                <div class="flex items-center gap-2.5 px-6 py-4 border-t border-slate-800/40 bg-surface-50/50">
+                    <button type="submit" class="btn-secondary flex items-center gap-2">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"/></svg>
+                        Save Changes
+                    </button>
+                    {% if draft.status == 'draft' %}
+                    <button type="button" onclick="document.getElementById('approve-form').submit()" class="btn-primary flex items-center gap-2">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        Save &amp; Approve
+                    </button>
+                    {% endif %}
+                    <span class="flex-1"></span>
+                    <span class="text-[11px] text-slate-600">{{ draft.template_name | replace('_', ' ') | title }}</span>
                 </div>
             </div>
         </form>
         <form id="approve-form" method="post" action="/campaigns/{{ draft.id }}/approve"></form>
     </div>
 
-    <!-- Sidebar: Actions + Info -->
-    <div class="space-y-4">
-        <!-- Quick actions -->
-        <div class="card space-y-3">
-            <h3 class="text-sm font-semibold text-slate-300">Actions</h3>
+    <!-- Sidebar -->
+    <div class="space-y-4 animate-card" style="animation-delay: 120ms">
+
+        <!-- Quick Actions -->
+        <div class="card space-y-2.5">
+            <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Actions</h3>
             {% if draft.status == 'draft' %}
             <form method="post" action="/campaigns/{{ draft.id }}/approve">
-                <button type="submit" class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium text-white transition-colors">
+                <button type="submit" class="btn-primary w-full flex items-center justify-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                     Approve Draft
                 </button>
             </form>
-            {% endif %}
-            <a href="/campaigns" class="block text-center px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium text-slate-300 transition-colors">Back to Campaigns</a>
-        </div>
-
-        <!-- Regenerate with different template -->
-        <div class="card space-y-3">
-            <h3 class="text-sm font-semibold text-slate-300">Regenerate</h3>
-            <p class="text-xs text-slate-500">Generate a fresh draft using a different template.</p>
-            <form method="post" action="/campaigns/{{ draft.id }}/regenerate">
-                <select name="template_name" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500 mb-3">
-                    {% for key, tpl in templates.items() %}
-                    <option value="{{ key }}" {% if draft.template_name == key %}selected{% endif %}>{{ tpl.label }}</option>
-                    {% endfor %}
-                </select>
-                <button type="submit" class="w-full px-4 py-2 bg-slate-600 hover:bg-slate-500 rounded-lg text-sm font-medium text-slate-200 transition-colors">
-                    Regenerate
+            {% elif draft.status == 'approved' %}
+            <form method="post" action="/campaigns/{{ draft.id }}/send-email">
+                <button type="submit" class="w-full flex items-center justify-center gap-2 px-4 py-2 bg-violet-600/90 hover:bg-violet-600 rounded-xl text-sm font-semibold text-white transition-all">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"/></svg>
+                    Send Email Directly
                 </button>
             </form>
+            <form method="post" action="/campaigns/{{ draft.id }}/send">
+                <button type="submit" class="w-full flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600/90 hover:bg-emerald-600 rounded-xl text-sm font-semibold text-white transition-all">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"/></svg>
+                    Push to Snov.io
+                </button>
+            </form>
+            {% endif %}
+            <a href="/campaigns" class="btn-secondary w-full block text-center">Back to Campaigns</a>
         </div>
 
-        <!-- Info -->
-        <div class="card space-y-2">
-            <h3 class="text-sm font-semibold text-slate-300">Details</h3>
-            <div class="text-xs space-y-1.5">
-                <div class="flex justify-between">
-                    <span class="text-slate-500">Template</span>
-                    <span class="text-slate-300">{{ draft.template_name | replace('_', ' ') | title }}</span>
+        <!-- Email Activity (F1) -->
+        {% if draft.resend_id or email_events %}
+        <details class="card !p-0 group" open>
+            <summary class="flex items-center justify-between px-5 py-3.5 cursor-pointer hover:bg-slate-800/30 transition-colors rounded-xl">
+                <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                    <svg class="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/></svg>
+                    Email Activity
+                </h3>
+                <svg class="w-4 h-4 text-slate-600 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg>
+            </summary>
+            <div class="px-5 pb-4 space-y-3">
+                {% if draft.resend_id %}
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-surface-200/50 rounded-lg px-3 py-2.5 text-center">
+                        <div class="text-lg font-bold text-blue-400 font-mono">{{ draft.open_count or 0 }}</div>
+                        <div class="text-[10px] text-slate-600 font-medium uppercase tracking-wider">Opens</div>
+                    </div>
+                    <div class="bg-surface-200/50 rounded-lg px-3 py-2.5 text-center">
+                        <div class="text-lg font-bold text-emerald-400 font-mono">{{ draft.click_count or 0 }}</div>
+                        <div class="text-[10px] text-slate-600 font-medium uppercase tracking-wider">Clicks</div>
+                    </div>
                 </div>
-                <div class="flex justify-between">
-                    <span class="text-slate-500">Created</span>
-                    <span class="text-slate-300">{{ (draft.created_at or '')[:16] | replace('T', ' ') }}</span>
+                {% endif %}
+                {% if email_events %}
+                <div class="space-y-1.5 max-h-40 overflow-y-auto">
+                    {% for ev in email_events %}
+                    <div class="flex items-center gap-2.5 text-xs py-1">
+                        <div class="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0
+                            {% if ev.event_type == 'delivered' %}bg-emerald-500/15 text-emerald-400
+                            {% elif ev.event_type == 'opened' %}bg-blue-500/15 text-blue-400
+                            {% elif ev.event_type == 'clicked' %}bg-emerald-500/20 text-emerald-300
+                            {% elif ev.event_type == 'bounced' %}bg-rose-500/15 text-rose-400
+                            {% elif ev.event_type == 'complained' %}bg-rose-500/20 text-rose-300
+                            {% else %}bg-slate-700/40 text-slate-500{% endif %}">
+                            {% if ev.event_type == 'delivered' %}<svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+                            {% elif ev.event_type == 'opened' %}<svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                            {% elif ev.event_type == 'clicked' %}<svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.042 21.672L13.684 16.6m0 0l-2.51 2.225.569-9.47 5.227 7.917-3.286-.672z"/></svg>
+                            {% elif ev.event_type == 'bounced' %}<svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                            {% else %}<span class="text-[10px]">&bull;</span>{% endif %}
+                        </div>
+                        <span class="text-slate-300 capitalize flex-1">{{ ev.event_type }}</span>
+                        <span class="text-slate-600 font-mono text-[10px]">{{ (ev.created_at or '')[:16] | replace('T', ' ') }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-[11px] text-slate-600">No events yet. Events appear after delivery.</p>
+                {% endif %}
+            </div>
+        </details>
+        {% endif %}
+
+        <!-- Sequence Chain (F3) -->
+        {% if sequence and sequence | length > 1 %}
+        <details class="card !p-0 group" open>
+            <summary class="flex items-center justify-between px-5 py-3.5 cursor-pointer hover:bg-slate-800/30 transition-colors rounded-xl">
+                <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                    <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z"/></svg>
+                    Email Sequence
+                </h3>
+                <svg class="w-4 h-4 text-slate-600 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg>
+            </summary>
+            <div class="px-5 pb-4 space-y-1.5">
+                {% for s in sequence %}
+                <div class="flex items-center gap-2.5 text-xs py-1.5 px-2 rounded-lg {% if s.id == draft.id %}bg-blue-500/8 ring-1 ring-blue-500/20{% endif %}">
+                    <span class="w-6 h-6 flex items-center justify-center rounded-md text-[10px] font-bold flex-shrink-0
+                        {% if s.status == 'sent' %}bg-emerald-500/15 text-emerald-400
+                        {% elif s.status == 'approved' %}bg-blue-500/15 text-blue-400
+                        {% else %}bg-slate-700/40 text-slate-500{% endif %}">
+                        {{ s.sequence_step or loop.index }}
+                    </span>
+                    <span class="text-slate-300 truncate flex-1">{{ s.subject[:35] }}{% if s.subject | length > 35 %}...{% endif %}</span>
+                    <span class="badge badge-{{ s.status }} !text-[10px]">{{ s.status }}</span>
+                    {% if s.id != draft.id %}
+                    <a href="/campaigns/{{ s.id }}" class="text-blue-400/70 hover:text-blue-400 text-[10px]">view</a>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </details>
+        {% endif %}
+
+        <!-- LinkedIn (F4) -->
+        {% if linkedin_msg %}
+        <details class="card !p-0 group" open>
+            <summary class="flex items-center justify-between px-5 py-3.5 cursor-pointer hover:bg-slate-800/30 transition-colors rounded-xl">
+                <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                    <svg class="w-3.5 h-3.5 text-sky-400" fill="currentColor" viewBox="0 0 24 24"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg>
+                    LinkedIn
+                </h3>
+                <svg class="w-4 h-4 text-slate-600 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg>
+            </summary>
+            <div class="px-5 pb-4 space-y-3">
+                <div class="flex items-center gap-2 text-xs">
+                    <span class="badge badge-{{ linkedin_msg.status }}">{{ linkedin_msg.status }}</span>
+                    <span class="text-slate-600">{{ linkedin_msg.message_type | replace('_', ' ') | title }}</span>
+                </div>
+                <div class="relative">
+                    <textarea id="linkedin-text" readonly rows="5" class="input w-full text-xs resize-none !pr-16">{{ linkedin_msg.message_text }}</textarea>
+                    <button onclick="navigator.clipboard.writeText(document.getElementById('linkedin-text').value).then(()=>{this.innerHTML='<svg class=\'w-3.5 h-3.5\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\' viewBox=\'0 0 24 24\'><path stroke-linecap=\'round\' stroke-linejoin=\'round\' d=\'M4.5 12.75l6 6 9-13.5\'/></svg> Copied';this.classList.add('!bg-emerald-600');setTimeout(()=>{this.innerHTML='Copy';this.classList.remove('!bg-emerald-600')},1500)})"
+                        class="absolute top-2 right-2 px-2.5 py-1 bg-sky-600/90 hover:bg-sky-600 rounded-lg text-[11px] font-semibold text-white transition-all flex items-center gap-1">Copy</button>
+                </div>
+                <div class="flex gap-2">
+                    <form method="post" action="/campaigns/{{ draft.id }}/linkedin-copied" class="flex-1">
+                        <button type="submit" class="btn-secondary w-full !text-xs !py-1.5">Mark Copied</button>
+                    </form>
+                    <form method="post" action="/campaigns/{{ draft.id }}/linkedin-sent" class="flex-1">
+                        <button type="submit" class="w-full px-3 py-1.5 bg-sky-600/90 hover:bg-sky-600 rounded-xl text-xs font-semibold text-white transition-all">Mark Sent</button>
+                    </form>
+                </div>
+            </div>
+        </details>
+        {% endif %}
+
+        <!-- AI Variants (F5) -->
+        {% if variants %}
+        <details class="card !p-0 group" open>
+            <summary class="flex items-center justify-between px-5 py-3.5 cursor-pointer hover:bg-slate-800/30 transition-colors rounded-xl">
+                <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                    <svg class="w-3.5 h-3.5 text-violet-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z"/></svg>
+                    AI Variants
+                </h3>
+                <svg class="w-4 h-4 text-slate-600 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg>
+            </summary>
+            <div class="px-5 pb-4 space-y-2.5">
+                <p class="text-[11px] text-slate-600">Alternative openings generated by AI. Pick the best one.</p>
+                {% for v in variants %}
+                <div class="bg-surface-200/50 rounded-lg p-3 space-y-2">
+                    <div class="text-[10px] text-violet-400 font-semibold uppercase tracking-wider">Variant {{ loop.index }}</div>
+                    <div class="text-xs text-slate-300 leading-relaxed">{{ v.body[:150] }}{% if v.body | length > 150 %}...{% endif %}</div>
+                    <form method="post" action="/campaigns/{{ draft.id }}/use-variant/{{ v.id }}">
+                        <button type="submit" class="btn-primary !text-xs !py-1 !px-2.5">Use This</button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+        </details>
+        {% endif %}
+
+        <!-- Regenerate -->
+        <details class="card !p-0 group">
+            <summary class="flex items-center justify-between px-5 py-3.5 cursor-pointer hover:bg-slate-800/30 transition-colors rounded-xl">
+                <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                    <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/></svg>
+                    Regenerate
+                </h3>
+                <svg class="w-4 h-4 text-slate-600 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg>
+            </summary>
+            <div class="px-5 pb-4 space-y-3">
+                <p class="text-[11px] text-slate-600">Generate a fresh draft using a different template.</p>
+                <form method="post" action="/campaigns/{{ draft.id }}/regenerate">
+                    <select name="template_name" class="input w-full mb-2.5">
+                        {% for key, tpl in templates.items() %}
+                        <option value="{{ key }}" {% if draft.template_name == key %}selected{% endif %}>{{ tpl.label }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" class="btn-secondary w-full">Regenerate</button>
+                </form>
+            </div>
+        </details>
+
+        <!-- Details -->
+        <details class="card !p-0 group">
+            <summary class="flex items-center justify-between px-5 py-3.5 cursor-pointer hover:bg-slate-800/30 transition-colors rounded-xl">
+                <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                    <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z"/></svg>
+                    Details
+                </h3>
+                <svg class="w-4 h-4 text-slate-600 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg>
+            </summary>
+            <div class="px-5 pb-4 space-y-2">
+                <div class="flex justify-between text-xs py-1">
+                    <span class="text-slate-600">Template</span>
+                    <span class="text-slate-400">{{ draft.template_name | replace('_', ' ') | title }}</span>
+                </div>
+                {% if draft.sequence_step and draft.sequence_step > 1 %}
+                <div class="flex justify-between text-xs py-1">
+                    <span class="text-slate-600">Sequence Step</span>
+                    <span class="text-amber-400 font-mono">{{ draft.sequence_step }}</span>
+                </div>
+                {% endif %}
+                <div class="flex justify-between text-xs py-1">
+                    <span class="text-slate-600">Created</span>
+                    <span class="text-slate-400 font-mono text-[11px]">{{ (draft.created_at or '')[:16] | replace('T', ' ') }}</span>
                 </div>
                 {% if draft.approved_at %}
-                <div class="flex justify-between">
-                    <span class="text-slate-500">Approved</span>
-                    <span class="text-slate-300">{{ draft.approved_at[:16] | replace('T', ' ') }}</span>
+                <div class="flex justify-between text-xs py-1">
+                    <span class="text-slate-600">Approved</span>
+                    <span class="text-slate-400 font-mono text-[11px]">{{ draft.approved_at[:16] | replace('T', ' ') }}</span>
                 </div>
                 {% endif %}
                 {% if draft.sent_at %}
-                <div class="flex justify-between">
-                    <span class="text-slate-500">Sent</span>
-                    <span class="text-slate-300">{{ draft.sent_at[:16] | replace('T', ' ') }}</span>
+                <div class="flex justify-between text-xs py-1">
+                    <span class="text-slate-600">Sent</span>
+                    <span class="text-slate-400 font-mono text-[11px]">{{ draft.sent_at[:16] | replace('T', ' ') }}</span>
+                </div>
+                {% endif %}
+                {% if draft.opened_at %}
+                <div class="flex justify-between text-xs py-1">
+                    <span class="text-slate-600">First Opened</span>
+                    <span class="text-blue-400 font-mono text-[11px]">{{ draft.opened_at[:16] | replace('T', ' ') }}</span>
+                </div>
+                {% endif %}
+                {% if draft.resend_id %}
+                <div class="flex justify-between text-xs py-1">
+                    <span class="text-slate-600">Resend ID</span>
+                    <span class="text-slate-500 font-mono text-[10px] truncate max-w-[130px]">{{ draft.resend_id }}</span>
                 </div>
                 {% endif %}
             </div>
-        </div>
+        </details>
     </div>
 </div>
 {% endblock %}

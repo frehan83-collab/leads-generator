@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+{% block title %}{{ prospect.full_name or 'Prospect' }}{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb -->
+<div class="flex items-center gap-2 text-xs text-slate-600 mb-4 animate-card">
+    <a href="/prospects" class="hover:text-slate-400 transition-colors">Prospects</a>
+    <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+    <span class="text-slate-400">{{ prospect.full_name or 'Profile' }}</span>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+    <!-- Left: Prospect Info -->
+    <div class="lg:col-span-2 space-y-5">
+
+        <!-- Profile header -->
+        <div class="card animate-card" style="animation-delay: 40ms">
+            <div class="flex items-start gap-4">
+                <div class="w-14 h-14 rounded-2xl bg-blue-500/15 flex items-center justify-center text-xl font-bold text-blue-400 flex-shrink-0">
+                    {{ (prospect.full_name or '?')[:1] | upper }}
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-3 mb-1">
+                        <h1 class="text-xl font-bold text-white tracking-tight">{{ prospect.full_name or '—' }}</h1>
+                        {% if prospect.current_stage %}
+                        <span class="badge
+                            {% if prospect.current_stage.stage == 'Won' %}badge-valid
+                            {% elif prospect.current_stage.stage == 'Lost' %}badge-failed
+                            {% elif prospect.current_stage.stage == 'Replied' %}badge-replied
+                            {% elif prospect.current_stage.stage == 'Opened' %}badge-opened
+                            {% elif prospect.current_stage.stage == 'Contacted' %}badge-approved
+                            {% else %}badge-pending{% endif %}">
+                            {{ prospect.current_stage.stage }}
+                        </span>
+                        {% endif %}
+                    </div>
+                    <div class="text-sm text-slate-400 mb-2">
+                        {% if prospect.position %}{{ prospect.position }} &bull; {% endif %}
+                        <span class="font-medium text-slate-300">{{ prospect.company_name or '—' }}</span>
+                    </div>
+                    <div class="flex flex-wrap gap-3 text-xs text-slate-500">
+                        <a href="mailto:{{ prospect.email }}" class="flex items-center gap-1.5 text-blue-400/80 hover:text-blue-400">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"/></svg>
+                            {{ prospect.email }}
+                        </a>
+                        {% if prospect.linkedin_url %}
+                        <a href="{{ prospect.linkedin_url }}" target="_blank" class="flex items-center gap-1.5 text-sky-400/80 hover:text-sky-400">
+                            <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg>
+                            LinkedIn
+                        </a>
+                        {% endif %}
+                        {% if prospect.company_domain %}
+                        <a href="https://{{ prospect.company_domain }}" target="_blank" class="flex items-center gap-1.5 hover:text-slate-300">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"/></svg>
+                            {{ prospect.company_domain }}
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+                <span class="badge badge-{{ prospect.email_status or 'unknown' }} flex-shrink-0">{{ prospect.email_status or 'unknown' }}</span>
+            </div>
+        </div>
+
+        <!-- Email Drafts -->
+        {% if prospect.drafts %}
+        <div class="card !p-0 overflow-hidden animate-card" style="animation-delay: 80ms">
+            <div class="px-5 py-3.5 border-b border-slate-800/40 flex items-center gap-2">
+                <svg class="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"/></svg>
+                <span class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Email Drafts</span>
+                <span class="text-[10px] font-mono text-slate-600 ml-auto">{{ prospect.drafts | length }}</span>
+            </div>
+            <div class="divide-y divide-slate-800/30">
+                {% for draft in prospect.drafts %}
+                <a href="/campaigns/{{ draft.id }}" class="flex items-center gap-3 px-5 py-3 hover:bg-surface-200/30 transition-colors group">
+                    <span class="badge badge-{{ draft.status }} !text-[10px]">{{ draft.status }}</span>
+                    <span class="text-xs text-slate-300 truncate flex-1">{{ draft.subject }}</span>
+                    {% if draft.open_count and draft.open_count > 0 %}
+                    <span class="text-[10px] text-blue-400 font-mono">{{ draft.open_count }} opens</span>
+                    {% endif %}
+                    <span class="text-[10px] text-slate-600 font-mono">{{ (draft.created_at or '')[:10] }}</span>
+                    <svg class="w-3.5 h-3.5 text-slate-700 group-hover:text-slate-400 transition-colors" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Email Events Timeline -->
+        {% if prospect.email_events %}
+        <div class="card animate-card" style="animation-delay: 120ms">
+            <div class="flex items-center gap-2 mb-4">
+                <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <span class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Activity Timeline</span>
+            </div>
+            <div class="space-y-2">
+                {% for ev in prospect.email_events %}
+                <div class="flex items-center gap-3 text-xs py-1.5">
+                    <div class="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0
+                        {% if ev.event_type == 'delivered' %}bg-emerald-500/15 text-emerald-400
+                        {% elif ev.event_type == 'opened' %}bg-blue-500/15 text-blue-400
+                        {% elif ev.event_type == 'clicked' %}bg-emerald-500/20 text-emerald-300
+                        {% elif ev.event_type == 'bounced' %}bg-rose-500/15 text-rose-400
+                        {% else %}bg-slate-700/40 text-slate-500{% endif %}">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            {% if ev.event_type == 'delivered' %}<path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/>
+                            {% elif ev.event_type == 'opened' %}<path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/>
+                            {% else %}<path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5"/>{% endif %}
+                        </svg>
+                    </div>
+                    <span class="text-slate-300 capitalize flex-1">{{ ev.event_type }}</span>
+                    <span class="text-slate-600 font-mono text-[10px]">{{ (ev.created_at or '')[:16] | replace('T', ' ') }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Right sidebar -->
+    <div class="space-y-5">
+        <!-- Intent Signal -->
+        {% if intent %}
+        <div class="stat-card animate-card" style="animation-delay: 60ms">
+            <div class="accent-bar" style="background: linear-gradient(90deg,
+                {% if intent.level == 'hot' %}#f59e0b, #ef4444
+                {% elif intent.level == 'warm' %}#f59e0b, #fb923c
+                {% elif intent.level == 'medium' %}#3b82f6, #60a5fa
+                {% else %}#475569, #64748b{% endif %});"></div>
+            <div class="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mb-2">Hiring Intent</div>
+            <div class="flex items-center gap-3 mb-3">
+                <div class="text-3xl font-bold font-mono
+                    {% if intent.level == 'hot' %}text-amber-400
+                    {% elif intent.level == 'warm' %}text-orange-400
+                    {% elif intent.level == 'medium' %}text-blue-400
+                    {% else %}text-slate-500{% endif %}">{{ intent.score }}</div>
+                <div>
+                    <div class="text-xs font-semibold text-slate-300 capitalize">{{ intent.level }}</div>
+                    <div class="text-[10px] text-slate-600">{{ intent.total_postings }} postings total</div>
+                </div>
+            </div>
+            <div class="space-y-1.5">
+                <div class="flex justify-between text-xs">
+                    <span class="text-slate-600">Recent (30d)</span>
+                    <span class="text-slate-400 font-mono">{{ intent.recent_postings }}</span>
+                </div>
+                <div class="flex justify-between text-xs">
+                    <span class="text-slate-600">Keywords</span>
+                    <span class="text-slate-400 font-mono">{{ intent.keyword_count }}</span>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Company Info (BRREG) -->
+        {% if prospect.company_info %}
+        <div class="card animate-card" style="animation-delay: 100ms">
+            <div class="flex items-center gap-2 mb-3">
+                <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21"/></svg>
+                <span class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Company (BRREG)</span>
+            </div>
+            <div class="space-y-2">
+                <div class="flex justify-between text-xs py-1">
+                    <span class="text-slate-600">Name</span>
+                    <span class="text-slate-300 font-medium">{{ prospect.company_info.name }}</span>
+                </div>
+                <div class="flex justify-between text-xs py-1">
+                    <span class="text-slate-600">Org Number</span>
+                    <span class="text-slate-400 font-mono text-[11px]">{{ prospect.company_info.org_number }}</span>
+                </div>
+                {% if prospect.company_info.employee_count %}
+                <div class="flex justify-between text-xs py-1">
+                    <span class="text-slate-600">Employees</span>
+                    <span class="text-slate-300 font-mono">{{ prospect.company_info.employee_count }}</span>
+                </div>
+                {% endif %}
+                {% if prospect.company_info.nace_description %}
+                <div class="flex justify-between text-xs py-1">
+                    <span class="text-slate-600">Industry</span>
+                    <span class="text-slate-400 text-[11px] text-right max-w-[140px]">{{ prospect.company_info.nace_description }}</span>
+                </div>
+                {% endif %}
+                {% if prospect.company_info.city %}
+                <div class="flex justify-between text-xs py-1">
+                    <span class="text-slate-600">City</span>
+                    <span class="text-slate-300">{{ prospect.company_info.city }}</span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Job Posting -->
+        {% if prospect.job_title %}
+        <div class="card animate-card" style="animation-delay: 140ms">
+            <div class="flex items-center gap-2 mb-3">
+                <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 00.75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 00-3.413-.387m4.5 8.006c-.194.165-.42.295-.673.38A23.978 23.978 0 0112 15.75c-2.648 0-5.195-.429-7.577-1.22a2.016 2.016 0 01-.673-.38m0 0A2.18 2.18 0 013 12.489V8.706c0-1.081.768-2.015 1.837-2.175a48.111 48.111 0 013.413-.387m7.5 0V5.25A2.25 2.25 0 0013.5 3h-3a2.25 2.25 0 00-2.25 2.25v.894m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
+                <span class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Related Posting</span>
+            </div>
+            <div class="text-sm text-slate-300 font-medium mb-1">{{ prospect.job_title }}</div>
+            {% if prospect.job_location %}<div class="text-xs text-slate-500 mb-1">{{ prospect.job_location }}</div>{% endif %}
+            {% if prospect.keyword_matched %}<span class="badge badge-pending">{{ prospect.keyword_matched }}</span>{% endif %}
+            {% if prospect.job_url %}
+            <div class="mt-2">
+                <a href="{{ prospect.job_url }}" target="_blank" class="text-blue-400/80 hover:text-blue-400 text-xs">View posting &nearr;</a>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- LinkedIn Messages -->
+        {% if prospect.linkedin_messages %}
+        <div class="card animate-card" style="animation-delay: 180ms">
+            <div class="flex items-center gap-2 mb-3">
+                <svg class="w-4 h-4 text-sky-400" fill="currentColor" viewBox="0 0 24 24"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg>
+                <span class="text-xs font-semibold text-slate-300 uppercase tracking-wider">LinkedIn</span>
+            </div>
+            {% for msg in prospect.linkedin_messages %}
+            <div class="bg-surface-200/50 rounded-lg p-3 mb-2 last:mb-0">
+                <div class="flex items-center gap-2 mb-1">
+                    <span class="badge badge-{{ msg.status }} !text-[10px]">{{ msg.status }}</span>
+                    <span class="text-[10px] text-slate-600">{{ msg.message_type | replace('_', ' ') | title }}</span>
+                </div>
+                <div class="text-[11px] text-slate-400 line-clamp-3 leading-relaxed">{{ msg.message_text[:150] }}{% if msg.message_text | length > 150 %}...{% endif %}</div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Quick info -->
+        <div class="card animate-card" style="animation-delay: 220ms">
+            <div class="flex items-center gap-2 mb-3">
+                <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z"/></svg>
+                <span class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Details</span>
+            </div>
+            <div class="space-y-2">
+                <div class="flex justify-between text-xs py-1">
+                    <span class="text-slate-600">Added</span>
+                    <span class="text-slate-400 font-mono text-[11px]">{{ (prospect.created_at or '')[:10] }}</span>
+                </div>
+                {% if prospect.enriched_at %}
+                <div class="flex justify-between text-xs py-1">
+                    <span class="text-slate-600">Enriched</span>
+                    <span class="text-slate-400 font-mono text-[11px]">{{ prospect.enriched_at[:10] }}</span>
+                </div>
+                {% endif %}
+                <div class="flex justify-between text-xs py-1">
+                    <span class="text-slate-600">Drafts</span>
+                    <span class="text-slate-400 font-mono">{{ prospect.drafts | length }}</span>
+                </div>
+                <div class="flex justify-between text-xs py-1">
+                    <span class="text-slate-600">Events</span>
+                    <span class="text-slate-400 font-mono">{{ prospect.email_events | length }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

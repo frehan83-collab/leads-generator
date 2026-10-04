@@ -107,7 +107,10 @@ class LeadPipeline:
                         with self._stats_lock:
                             self._stats["errors"] += 1
 
-            # Step 3: Auto-export CSV
+            # Step 3: Calculate intent scores for companies with new postings
+            self._calculate_intent_scores()
+
+            # Step 4: Auto-export CSV
             csv_path = auto_export_after_run()
             if csv_path:
                 logger.info("Auto-exported CSV to %s", csv_path)
@@ -648,6 +651,35 @@ class LeadPipeline:
                     "status": "added_to_snov",
                     "notes": f"Auto-added from {posting.get('source', 'finn')} posting {posting.get('external_id', posting.get('finn_id', ''))}",
                 })
+
+    def _calculate_intent_scores(self) -> None:
+        """Calculate hiring intent scores for all companies with job postings."""
+        import json
+
+        try:
+            with db.get_connection() as conn:
+                domains = conn.execute(
+                    "SELECT DISTINCT company_domain FROM job_postings WHERE company_domain IS NOT NULL"
+                ).fetchall()
+
+            scored = 0
+            for row in domains:
+                domain = row[0]
+                if not domain:
+                    continue
+
+                signals = db.get_company_intent_signals(domain)
+                score = signals.get("score", 0)
+                if score > 0:
+                    db.update_company_intent_score(
+                        domain, score, json.dumps(signals)
+                    )
+                    scored += 1
+
+            if scored:
+                logger.info("Updated intent scores for %d companies", scored)
+        except Exception as exc:
+            logger.warning("Intent score calculation failed: %s", exc)
 
     def _log_stats(self) -> None:
         logger.info("=== Pipeline complete ===")

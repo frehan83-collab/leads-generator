@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dashboard",
+      "runtimeExecutable": "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3",
+      "runtimeArgs": ["main.py", "--web", "--port", "8080"],
+      "port": 8080
+    }
+  ]
+}

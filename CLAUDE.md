@@ -11,9 +11,7 @@ Current user is in Oslo, speaks Norwegian + English, prefers concise answers.
 
 ## Project Overview
 
-**Sperton Leads Generator** — an automated lead generation and PDF data extraction platform serving two brands:
-- **Sperton Leads**: Recruitment prospecting (scrapes Norwegian job boards, enriches with Snov.io)
-- **ERA Group Analytics**: ML-based PDF data extraction and analysis
+**Sperton Sales Platform** — an automated recruitment sales and prospecting tool for Sperton Rekruttering. Scrapes Norwegian job boards (Finn.no, NAV), enriches contacts via Snov.io and BRREG, generates AI-personalized email drafts, tracks engagement via Resend webhooks, and manages multichannel outreach (email + LinkedIn).
 
 ## Commands
 
@@ -64,11 +62,11 @@ python main.py --status  # Auto-initializes the SQLite database
 | `scraper/` | Playwright-based scrapers for Finn.no, NAV, NCE job boards + website email extraction |
 | `snov/client.py` | Snov.io API client with OAuth2 auto-refresh, domain resolution, prospect finding, email verification |
 | `brreg/` | Norwegian Business Register (BRREG) API integration for company validation |
-| `database/db.py` | SQLite schema (17 tables), query helpers, incremental migrations via `_migrate()` |
+| `database/db.py` | SQLite schema, query helpers, incremental migrations via `_migrate()` |
 | `web/app.py` | Flask factory (`create_app()`), blueprint registration |
-| `web/routes/` | 8 route modules covering dashboard, postings, prospects, campaigns, ERA features, API endpoints |
-| `era/pdf_extractor.py` | ML-based PDF analysis: LayoutLM v3 primary, pdfplumber fallback |
-| `emails/` | Personalized email draft generation and templates |
+| `web/routes/` | Route modules: dashboard, postings, prospects, campaigns, webhooks, settings, API, CRM pipeline |
+| `emails/` | AI-personalized email draft generation, templates, LinkedIn templates, Sperton context |
+| `outreach/` | Email sending via Resend, follow-up sequence checker, smart scheduling |
 | `scheduler/runner.py` | Daily scheduler (runs pipeline at 09:30 UTC by default, configurable via `RUN_TIME` env var) |
 | `logger.py` | Centralized colored logging with rotating file handler (`logs/leads_generator.log`) |
 
@@ -84,21 +82,27 @@ The main pipeline in `src/pipeline/lead_pipeline.py` runs these stages sequentia
 7. **Store** to SQLite
 8. **Generate email drafts** from templates
 9. **Add to Snov.io campaign** for automated outreach
+10. **Calculate intent scores** per company based on posting frequency and recency
 
 ### Database
 
 SQLite (`leads.db` in project root). Key tables:
 - `job_postings` — deduplicated via `UNIQUE(source, external_id)`
 - `prospects` — deduplicated via `UNIQUE(email)`
-- `companies`, `emails`, `email_drafts`, `outreach_log`, `pipeline_runs`
-- `era_pdf_uploads`, `era_extractions`, `era_corrections`, `era_extraction_templates` — ERA feature tables
+- `companies` — with `intent_score` and `intent_signals` columns
+- `emails`, `email_drafts` (with `scheduled_for`), `outreach_log`, `pipeline_runs`
+- `email_events` — Resend webhook tracking (opens, clicks, bounces)
+- `linkedin_messages` — LinkedIn outreach messages
+- `prospect_stages` — CRM pipeline stage tracking (New → Contacted → Opened → Replied → Meeting → Won → Lost)
 
 Migrations are incremental and re-run-safe, defined in `db._migrate()`.
 
 ### Web Frontend
 
-- Flask + Jinja2 templates (dark-themed, responsive)
-- HTMX for AJAX updates without writing JavaScript (used for real-time pipeline status polling)
+- Flask + Jinja2 templates with premium dark UI (Inter + JetBrains Mono fonts, glassmorphism cards, staggered animations)
+- Tailwind CSS via CDN with custom config (dark mode, card system, badge system, collapsible sidebar)
+- HTMX for AJAX updates (real-time pipeline status polling, CRM kanban drag-and-drop)
+- Chart.js v4.4.0 for dashboard charts (engagement, pipeline trends, funnel visualization)
 - Templates in `src/web/templates/`, base template: `base.html`
 
 ### External Integrations
@@ -119,6 +123,30 @@ FLASK_SECRET=...
 LOG_LEVEL=INFO
 ```
 
-### ML/PDF Features (ERA)
+### SaaS Features (Built)
 
-`src/era/pdf_extractor.py` uses LayoutLM v3 (PyTorch + Transformers) when available, with graceful fallback to pdfplumber. The optional ML dependencies (`torch`, `transformers`, `paddleocr`) are commented out in `requirements.txt` and must be installed separately if needed.
+- **F1**: Resend webhook tracking — open/click/bounce events, analytics dashboard
+- **F3**: Automated follow-up sequences — 3-step email chains, auto-send on no-open
+- **F4**: LinkedIn outreach — copy-ready connection requests, follow-ups, InMail templates
+- **F5**: AI hyper-personalization — Claude Haiku openers with BRREG context, A/B variants
+- **C1**: A/B Testing Engine — variant comparison dashboard with engagement stats, winner detection
+- **C2**: CRM Pipeline (Kanban) — drag-and-drop board with 7 stages, auto-moves on email events (`/crm`)
+- **C3**: Hiring Intent Signals — 0-100 scoring based on posting frequency/recency/diversity, hot prospects widget
+- **C4**: Company & Contact Enrichment Panel — full prospect profile with BRREG data, all outreach history (`/prospects/<id>/profile`)
+- **C5**: Smart Send Scheduler — optimal send times targeting Norwegian business hours (Tue-Thu 09:00-11:00 CET)
+
+### Web Routes
+
+| Route | Page |
+|-------|------|
+| `/` | Dashboard — KPIs, outreach funnel, engagement charts, hot prospects, CRM pipeline summary |
+| `/campaigns` | Email campaigns — draft list with search, filters, bulk actions |
+| `/campaigns/<id>` | Draft detail — email preview, accordion sidebar (activity, sequence, LinkedIn, variants) |
+| `/campaigns/ab-tests` | A/B test comparison dashboard |
+| `/campaigns/linkedin` | LinkedIn outreach list |
+| `/prospects` | Prospects data table |
+| `/prospects/<id>/profile` | Full prospect enrichment profile |
+| `/postings` | Job postings data table |
+| `/crm` | CRM pipeline Kanban board |
+| `/settings` | Settings — pipeline config, send settings, keywords, integrations |
+| `/webhooks/resend` | Resend webhook endpoint (POST) |

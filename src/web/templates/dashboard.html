@@ -2,129 +2,320 @@
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
-<div class="mb-6">
-    <h1 class="text-2xl font-bold text-white">Dashboard</h1>
-    <p class="text-slate-400 text-sm mt-1">Sperton leads overview — finn.no recruitment pipeline</p>
+<!-- Header -->
+<div class="mb-8">
+    <h1 class="text-2xl font-bold text-white tracking-tight">Dashboard</h1>
+    <p class="text-slate-500 text-sm mt-1">Sperton recruitment pipeline overview</p>
 </div>
 
-<!-- Stats Cards -->
+<!-- Hero KPI Cards -->
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-    <div class="card">
-        <div class="text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">Job Postings</div>
-        <div class="text-3xl font-bold text-white">{{ stats.total_postings }}</div>
+    <div class="stat-card animate-card">
+        <div class="accent-bar bg-gradient-to-r from-blue-500 to-blue-600"></div>
+        <div class="text-slate-500 text-[11px] font-semibold uppercase tracking-wider mb-2">Job Postings</div>
+        <div class="text-3xl font-bold text-white font-mono" data-count="{{ stats.total_postings }}">{{ stats.total_postings }}</div>
         {% if stats.new_postings_today > 0 %}
-        <div class="text-green-400 text-xs mt-1">+{{ stats.new_postings_today }} today</div>
+        <div class="flex items-center gap-1 mt-2">
+            <svg class="w-3 h-3 text-emerald-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 17a.75.75 0 01-.75-.75V5.612L5.29 9.77a.75.75 0 01-1.08-1.04l5.25-5.5a.75.75 0 011.08 0l5.25 5.5a.75.75 0 11-1.08 1.04l-3.96-4.158V16.25A.75.75 0 0110 17z"/></svg>
+            <span class="text-emerald-400 text-xs font-medium">+{{ stats.new_postings_today }} today</span>
+        </div>
         {% endif %}
     </div>
-    <div class="card">
-        <div class="text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">Prospects</div>
-        <div class="text-3xl font-bold text-white">{{ stats.total_prospects }}</div>
+    <div class="stat-card animate-card">
+        <div class="accent-bar bg-gradient-to-r from-violet-500 to-purple-600"></div>
+        <div class="text-slate-500 text-[11px] font-semibold uppercase tracking-wider mb-2">Prospects</div>
+        <div class="text-3xl font-bold text-white font-mono" data-count="{{ stats.total_prospects }}">{{ stats.total_prospects }}</div>
         {% if stats.new_prospects_today > 0 %}
-        <div class="text-green-400 text-xs mt-1">+{{ stats.new_prospects_today }} today</div>
+        <div class="flex items-center gap-1 mt-2">
+            <svg class="w-3 h-3 text-emerald-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 17a.75.75 0 01-.75-.75V5.612L5.29 9.77a.75.75 0 01-1.08-1.04l5.25-5.5a.75.75 0 011.08 0l5.25 5.5a.75.75 0 11-1.08 1.04l-3.96-4.158V16.25A.75.75 0 0110 17z"/></svg>
+            <span class="text-emerald-400 text-xs font-medium">+{{ stats.new_prospects_today }} today</span>
+        </div>
         {% endif %}
     </div>
-    <div class="card">
-        <div class="text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">Verified Emails</div>
-        <div class="text-3xl font-bold text-white">{{ stats.verified_emails }}</div>
-        <div class="text-slate-500 text-xs mt-1">
-            {% if stats.total_prospects > 0 %}{{ ((stats.verified_emails / stats.total_prospects) * 100) | round(0) | int }}% of total{% endif %}
+    <div class="stat-card animate-card">
+        <div class="accent-bar bg-gradient-to-r from-emerald-500 to-green-600"></div>
+        <div class="text-slate-500 text-[11px] font-semibold uppercase tracking-wider mb-2">Verified Emails</div>
+        <div class="text-3xl font-bold text-white font-mono" data-count="{{ stats.verified_emails }}">{{ stats.verified_emails }}</div>
+        <div class="text-slate-600 text-xs mt-2">
+            {% if stats.total_prospects > 0 %}{{ ((stats.verified_emails / stats.total_prospects) * 100) | round(0) | int }}% verified{% endif %}
         </div>
     </div>
-    <div class="card">
-        <div class="text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">Email Drafts</div>
-        <div class="text-3xl font-bold text-white">{{ stats.total_drafts }}</div>
-        <div class="text-slate-500 text-xs mt-1">{{ stats.drafts_sent }} sent &bull; {{ stats.drafts_replied }} replied</div>
+    <div class="stat-card animate-card">
+        <div class="accent-bar bg-gradient-to-r from-amber-500 to-orange-500"></div>
+        <div class="text-slate-500 text-[11px] font-semibold uppercase tracking-wider mb-2">Email Drafts</div>
+        <div class="text-3xl font-bold text-white font-mono" data-count="{{ stats.total_drafts }}">{{ stats.total_drafts }}</div>
+        <div class="text-slate-600 text-xs mt-2">
+            <span class="text-emerald-400/80">{{ stats.drafts_sent }} sent</span> &middot; <span class="text-blue-400/80">{{ stats.drafts_replied }} replied</span>
+        </div>
     </div>
 </div>
+
+<!-- Outreach Engagement Row -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div class="stat-card animate-card">
+        <div class="accent-bar bg-gradient-to-r from-violet-500 to-violet-600"></div>
+        <div class="flex items-center justify-between mb-2">
+            <div class="text-slate-500 text-[11px] font-semibold uppercase tracking-wider">Emails Sent</div>
+            <svg class="w-4 h-4 text-violet-400/50" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"/></svg>
+        </div>
+        <div class="text-2xl font-bold text-white font-mono">{{ outreach_stats.total_sent }}</div>
+        <div class="text-slate-600 text-xs mt-1">{{ outreach_stats.total_delivered }} delivered</div>
+    </div>
+    <div class="stat-card animate-card">
+        <div class="accent-bar bg-gradient-to-r from-blue-500 to-blue-600"></div>
+        <div class="flex items-center justify-between mb-2">
+            <div class="text-slate-500 text-[11px] font-semibold uppercase tracking-wider">Open Rate</div>
+            <svg class="w-4 h-4 text-blue-400/50" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        </div>
+        <div class="text-2xl font-bold text-white font-mono">{{ outreach_stats.open_rate }}%</div>
+        <div class="text-slate-600 text-xs mt-1">{{ outreach_stats.total_opened }} opened</div>
+    </div>
+    <div class="stat-card animate-card">
+        <div class="accent-bar bg-gradient-to-r from-emerald-500 to-green-500"></div>
+        <div class="flex items-center justify-between mb-2">
+            <div class="text-slate-500 text-[11px] font-semibold uppercase tracking-wider">Click Rate</div>
+            <svg class="w-4 h-4 text-emerald-400/50" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.042 21.672L13.684 16.6m0 0l-2.51 2.225.569-9.47 5.227 7.917-3.286-.672zM12 2.25V4.5m5.834.166l-1.591 1.591M20.25 10.5H18M7.757 14.743l-1.59 1.59M6 10.5H3.75m4.007-4.243l-1.59-1.59"/></svg>
+        </div>
+        <div class="text-2xl font-bold text-white font-mono">{{ outreach_stats.click_rate }}%</div>
+        <div class="text-slate-600 text-xs mt-1">{{ outreach_stats.total_clicked }} clicked</div>
+    </div>
+    <div class="stat-card animate-card">
+        <div class="accent-bar bg-gradient-to-r from-rose-500 to-red-500"></div>
+        <div class="flex items-center justify-between mb-2">
+            <div class="text-slate-500 text-[11px] font-semibold uppercase tracking-wider">Bounce Rate</div>
+            <svg class="w-4 h-4 text-rose-400/50" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+        </div>
+        <div class="text-2xl font-bold text-white font-mono">{{ outreach_stats.bounce_rate }}%</div>
+        <div class="text-slate-600 text-xs mt-1">{{ outreach_stats.total_bounced }} bounced</div>
+    </div>
+</div>
+
+<!-- LinkedIn Stats -->
+{% if linkedin_stats.total > 0 %}
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div class="stat-card animate-card">
+        <div class="accent-bar bg-gradient-to-r from-sky-500 to-sky-600"></div>
+        <div class="flex items-center gap-2 mb-2">
+            <svg class="w-3.5 h-3.5 text-sky-400" fill="currentColor" viewBox="0 0 24 24"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg>
+            <div class="text-slate-500 text-[11px] font-semibold uppercase tracking-wider">LinkedIn Messages</div>
+        </div>
+        <div class="text-2xl font-bold text-white font-mono">{{ linkedin_stats.total }}</div>
+    </div>
+    <div class="stat-card animate-card">
+        <div class="accent-bar bg-gradient-to-r from-sky-400 to-cyan-400"></div>
+        <div class="text-slate-500 text-[11px] font-semibold uppercase tracking-wider mb-2">Copied</div>
+        <div class="text-2xl font-bold text-white font-mono">{{ linkedin_stats.copied }}</div>
+    </div>
+    <div class="stat-card animate-card">
+        <div class="accent-bar bg-gradient-to-r from-cyan-400 to-teal-400"></div>
+        <div class="text-slate-500 text-[11px] font-semibold uppercase tracking-wider mb-2">Sent</div>
+        <div class="text-2xl font-bold text-white font-mono">{{ linkedin_stats.sent }}</div>
+    </div>
+    <div class="stat-card animate-card">
+        <div class="accent-bar bg-gradient-to-r from-teal-400 to-emerald-400"></div>
+        <div class="text-slate-500 text-[11px] font-semibold uppercase tracking-wider mb-2">Reply Rate</div>
+        <div class="text-2xl font-bold text-white font-mono">{{ linkedin_stats.reply_rate }}%</div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Outreach Funnel -->
+{% if outreach_stats.total_sent > 0 %}
+<div class="card mb-6 animate-card">
+    <h2 class="text-sm font-semibold text-slate-300 mb-4">Outreach Funnel</h2>
+    <div class="flex items-center justify-between gap-2 px-4">
+        {% set stages = [
+            ('Sent', outreach_stats.total_sent, 'violet'),
+            ('Delivered', outreach_stats.total_delivered, 'blue'),
+            ('Opened', outreach_stats.total_opened, 'sky'),
+            ('Clicked', outreach_stats.total_clicked, 'emerald'),
+        ] %}
+        {% for label, count, color in stages %}
+        <div class="flex-1 text-center">
+            <div class="text-2xl font-bold text-white font-mono">{{ count }}</div>
+            <div class="text-[11px] text-slate-500 font-medium uppercase tracking-wider mt-1">{{ label }}</div>
+            {% if outreach_stats.total_sent > 0 and loop.index > 1 %}
+            <div class="text-[10px] text-slate-600 mt-0.5">{{ ((count / outreach_stats.total_sent) * 100) | round(0) | int }}%</div>
+            {% endif %}
+        </div>
+        {% if not loop.last %}
+        <svg class="w-5 h-5 text-slate-700 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+        {% endif %}
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
 
 <!-- Charts -->
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-    <div class="card">
-        <h2 class="text-sm font-semibold text-slate-300 mb-4">Job Postings (last 30 days)</h2>
+    <div class="card animate-card">
+        <h2 class="text-sm font-semibold text-slate-300 mb-4">Job Postings <span class="text-slate-600 font-normal">(30 days)</span></h2>
         <canvas id="postingsChart" height="120"></canvas>
     </div>
-    <div class="card">
-        <h2 class="text-sm font-semibold text-slate-300 mb-4">Prospects Found (last 30 days)</h2>
+    <div class="card animate-card">
+        <h2 class="text-sm font-semibold text-slate-300 mb-4">Prospects Found <span class="text-slate-600 font-normal">(30 days)</span></h2>
         <canvas id="prospectsChart" height="120"></canvas>
     </div>
 </div>
 
-<!-- Pipeline Trends -->
-<div class="grid grid-cols-1 gap-4 mb-6">
-    <div class="card">
-        <h2 class="text-sm font-semibold text-slate-300 mb-4">Pipeline Trends (last 30 days)</h2>
-        <canvas id="pipelineTrendsChart" height="80"></canvas>
+<!-- Engagement + Pipeline Charts -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+    <div class="card animate-card">
+        <h2 class="text-sm font-semibold text-slate-300 mb-4">Email Engagement <span class="text-slate-600 font-normal">(30 days)</span></h2>
+        <canvas id="engagementChart" height="140"></canvas>
+    </div>
+    <div class="card animate-card">
+        <h2 class="text-sm font-semibold text-slate-300 mb-4">Pipeline Trends <span class="text-slate-600 font-normal">(30 days)</span></h2>
+        <canvas id="pipelineTrendsChart" height="140"></canvas>
     </div>
 </div>
 
-<!-- Bottom row: Activity feed + Pipeline runs -->
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+<!-- Pipeline Counts (CRM) -->
+{% if pipeline_counts and pipeline_counts.values() | sum > 0 %}
+<div class="card mb-6 animate-card">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-sm font-semibold text-slate-300">CRM Pipeline</h2>
+        <a href="/crm" class="text-blue-400 text-xs hover:text-blue-300 font-medium transition-colors">Open board &rarr;</a>
+    </div>
+    <div class="flex items-center gap-3">
+        {% set stage_colors = {'New': 'slate', 'Contacted': 'blue', 'Opened': 'sky', 'Replied': 'emerald', 'Meeting': 'violet', 'Won': 'green', 'Lost': 'rose'} %}
+        {% for stage in ['New', 'Contacted', 'Opened', 'Replied', 'Meeting', 'Won', 'Lost'] %}
+        {% set count = pipeline_counts.get(stage, 0) %}
+        <div class="flex-1 text-center py-3 rounded-lg bg-{{ stage_colors[stage] }}-500/5 border border-{{ stage_colors[stage] }}-500/10">
+            <div class="text-xl font-bold text-white font-mono">{{ count }}</div>
+            <div class="text-[10px] text-slate-500 font-medium uppercase tracking-wider mt-1">{{ stage }}</div>
+        </div>
+        {% if not loop.last %}
+        <svg class="w-4 h-4 text-slate-700 flex-shrink-0 -mx-1" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+        {% endif %}
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Hot Prospects + Activity Row -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+    <!-- Hot Prospects (Intent Signals) -->
+    <div class="card animate-card">
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2">
+                <div class="w-6 h-6 rounded-md bg-orange-500/10 flex items-center justify-center">
+                    <svg class="w-3.5 h-3.5 text-orange-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M12.395 2.553a1 1 0 00-1.45-.385c-.345.23-.614.558-.822.88-.214.33-.403.713-.57 1.116-.334.804-.614 1.768-.84 2.734a31.365 31.365 0 00-.613 3.58 2.64 2.64 0 01-.945-1.067c-.328-.68-.398-1.534-.398-2.654A1 1 0 005.05 6.05 6.981 6.981 0 003 11a7 7 0 1011.95-4.95c-.592-.591-.98-.985-1.348-1.467-.363-.476-.724-1.063-1.207-2.03zM12.12 15.12A3 3 0 017 13s.879.5 2.5.5c0-1 .5-4 1.25-4.5.5 1 .786 1.293 1.371 1.879A2.99 2.99 0 0113 13a2.99 2.99 0 01-.879 2.121z" clip-rule="evenodd"/></svg>
+                </div>
+                <h2 class="text-sm font-semibold text-slate-300">Hot Prospects</h2>
+            </div>
+            <a href="/prospects" class="text-blue-400 text-xs hover:text-blue-300 font-medium transition-colors">View all &rarr;</a>
+        </div>
+        {% if hot_prospects %}
+        <div class="space-y-1">
+            {% for hp in hot_prospects %}
+            <a href="/prospects/{{ hp.id }}/profile" class="flex items-center gap-3 py-2.5 px-2 rounded-lg border-b border-slate-800/50 last:border-0 hover:bg-slate-700/20 transition-colors group">
+                <div class="w-8 h-8 rounded-full bg-gradient-to-br from-orange-500/20 to-amber-500/20 border border-orange-500/20 flex items-center justify-center flex-shrink-0">
+                    <span class="text-[11px] font-bold text-orange-300">{{ (hp.full_name or hp.email)[:1] | upper }}</span>
+                </div>
+                <div class="min-w-0 flex-1">
+                    <div class="text-[13px] text-slate-200 truncate group-hover:text-white transition-colors">{{ hp.full_name or hp.email }}</div>
+                    <div class="text-[11px] text-slate-600 truncate">{{ hp.company_name or hp.company_domain }}</div>
+                </div>
+                <div class="flex items-center gap-1 flex-shrink-0">
+                    {% set score = hp.intent_score or 0 %}
+                    {% if score >= 70 %}
+                    <span class="text-[10px] font-bold text-orange-400 bg-orange-500/10 px-1.5 py-0.5 rounded">🔥 {{ score }}</span>
+                    {% elif score >= 40 %}
+                    <span class="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">🌡 {{ score }}</span>
+                    {% else %}
+                    <span class="text-[10px] font-bold text-slate-500 bg-slate-500/10 px-1.5 py-0.5 rounded">{{ score }}</span>
+                    {% endif %}
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-6">
+            <div class="text-slate-700 text-sm">No intent signals yet</div>
+            <div class="text-slate-600 text-xs mt-1">Run the pipeline to calculate intent scores</div>
+        </div>
+        {% endif %}
+    </div>
+
     <!-- Activity Feed -->
-    <div class="card">
+    <div class="card animate-card lg:col-span-2">
         <h2 class="text-sm font-semibold text-slate-300 mb-4">Recent Activity</h2>
-        <div class="space-y-2">
+        <div class="space-y-1">
             {% for item in activity %}
-            <div class="flex items-start gap-3 py-2 border-b border-slate-700 last:border-0">
-                <div class="mt-0.5 flex-shrink-0">
+            <div class="flex items-center gap-3 py-2.5 border-b border-slate-800/50 last:border-0">
+                <div class="flex-shrink-0">
                     {% if item.type == 'posting' %}
-                    <div class="w-6 h-6 bg-blue-900 rounded-full flex items-center justify-center">
-                        <svg class="w-3 h-3 text-blue-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/><path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5z"/></svg>
+                    <div class="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                        <svg class="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25"/></svg>
                     </div>
                     {% elif item.type == 'prospect' %}
-                    <div class="w-6 h-6 bg-purple-900 rounded-full flex items-center justify-center">
-                        <svg class="w-3 h-3 text-purple-400" fill="currentColor" viewBox="0 0 20 20"><path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"/></svg>
+                    <div class="w-7 h-7 rounded-lg bg-violet-500/10 flex items-center justify-center">
+                        <svg class="w-3.5 h-3.5 text-violet-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0"/></svg>
                     </div>
                     {% else %}
-                    <div class="w-6 h-6 bg-green-900 rounded-full flex items-center justify-center">
-                        <svg class="w-3 h-3 text-green-400" fill="currentColor" viewBox="0 0 20 20"><path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"/><path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"/></svg>
+                    <div class="w-7 h-7 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                        <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"/></svg>
                     </div>
                     {% endif %}
                 </div>
                 <div class="min-w-0 flex-1">
-                    <div class="text-sm text-slate-200 truncate">{{ item.title }}</div>
-                    <div class="text-xs text-slate-500 truncate">{{ item.description }}</div>
+                    <div class="text-[13px] text-slate-200 truncate">{{ item.title }}</div>
+                    <div class="text-[11px] text-slate-600 truncate">{{ item.description }}</div>
                 </div>
-                <div class="text-xs text-slate-600 flex-shrink-0">{{ (item.timestamp or '')[:10] }}</div>
+                <div class="text-[11px] text-slate-700 flex-shrink-0 font-mono">{{ (item.timestamp or '')[:10] }}</div>
             </div>
             {% else %}
-            <p class="text-slate-500 text-sm">No activity yet. Run the pipeline to get started.</p>
+            <p class="text-slate-600 text-sm py-4 text-center">No activity yet. Run the pipeline to get started.</p>
             {% endfor %}
         </div>
     </div>
 
-    <!-- Recent Pipeline Runs -->
-    <div class="card">
-        <div class="flex items-center justify-between mb-4">
-            <h2 class="text-sm font-semibold text-slate-300">Pipeline Runs</h2>
-            <a href="/settings" class="text-blue-400 text-xs hover:text-blue-300">Run now &rarr;</a>
-        </div>
-        {% if recent_runs %}
-        <div class="space-y-2">
-            {% for run in recent_runs %}
-            <div class="flex items-center gap-3 py-2 border-b border-slate-700 last:border-0">
-                <span class="text-xs px-2 py-0.5 rounded-full font-medium badge-{{ run.status }}">{{ run.status }}</span>
-                <div class="flex-1 min-w-0">
-                    <div class="text-xs text-slate-300">{{ (run.started_at or '')[:16] | replace('T', ' ') }}</div>
-                    <div class="text-xs text-slate-500">
-                        {{ run.postings_scraped }} postings &bull; {{ run.emails_found }} emails &bull; {{ run.drafts_created }} drafts
-                    </div>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <p class="text-slate-500 text-sm">No pipeline runs yet.</p>
-        {% endif %}
     </div>
 </div>
 
+<!-- Pipeline Runs (full width) -->
+<div class="card animate-card">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-sm font-semibold text-slate-300">Pipeline Runs</h2>
+        <a href="/settings" class="text-blue-400 text-xs hover:text-blue-300 font-medium transition-colors">Run now &rarr;</a>
+    </div>
+    {% if recent_runs %}
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-2">
+        {% for run in recent_runs %}
+        <div class="flex items-center gap-3 py-2.5 px-3 rounded-lg bg-slate-800/30 border border-slate-700/20">
+            <span class="badge badge-{{ run.status }}">{{ run.status }}</span>
+            <div class="flex-1 min-w-0">
+                <div class="text-[12px] text-slate-400 font-mono">{{ (run.started_at or '')[:16] | replace('T', ' ') }}</div>
+                <div class="text-[11px] text-slate-600">
+                    {{ run.postings_scraped }} postings &middot; {{ run.emails_found }} emails &middot; {{ run.drafts_created }} drafts
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-slate-600 text-sm py-4 text-center">No pipeline runs yet.</p>
+    {% endif %}
+</div>
+
 <script>
+const chartFont = { family: "'Inter', system-ui, sans-serif", size: 10 };
 const chartDefaults = {
     responsive: true,
     plugins: { legend: { display: false } },
     scales: {
-        x: { grid: { color: '#1e293b' }, ticks: { color: '#64748b', font: { size: 10 } } },
-        y: { grid: { color: '#1e293b' }, ticks: { color: '#64748b', font: { size: 10 } }, beginAtZero: true }
+        x: {
+            grid: { color: 'rgba(30, 41, 59, 0.5)', drawBorder: false },
+            ticks: { color: '#475569', font: chartFont, maxRotation: 0 },
+            border: { display: false }
+        },
+        y: {
+            grid: { color: 'rgba(30, 41, 59, 0.5)', drawBorder: false },
+            ticks: { color: '#475569', font: chartFont },
+            border: { display: false },
+            beginAtZero: true
+        }
     }
 };
 
@@ -134,8 +325,13 @@ const prospectsData = {{ prospects_chart | tojson }};
 new Chart(document.getElementById('postingsChart'), {
     type: 'bar',
     data: {
-        labels: postingsData.map(d => d.day),
-        datasets: [{ data: postingsData.map(d => d.count), backgroundColor: '#3b82f6', borderRadius: 4 }]
+        labels: postingsData.map(d => d.day.slice(5)),
+        datasets: [{
+            data: postingsData.map(d => d.count),
+            backgroundColor: 'rgba(59, 130, 246, 0.6)',
+            hoverBackgroundColor: 'rgba(59, 130, 246, 0.9)',
+            borderRadius: 6, borderSkipped: false, maxBarThickness: 18,
+        }]
     },
     options: chartDefaults
 });
@@ -143,42 +339,47 @@ new Chart(document.getElementById('postingsChart'), {
 new Chart(document.getElementById('prospectsChart'), {
     type: 'bar',
     data: {
-        labels: prospectsData.map(d => d.day),
-        datasets: [{ data: prospectsData.map(d => d.count), backgroundColor: '#8b5cf6', borderRadius: 4 }]
+        labels: prospectsData.map(d => d.day.slice(5)),
+        datasets: [{
+            data: prospectsData.map(d => d.count),
+            backgroundColor: 'rgba(139, 92, 246, 0.6)',
+            hoverBackgroundColor: 'rgba(139, 92, 246, 0.9)',
+            borderRadius: 6, borderSkipped: false, maxBarThickness: 18,
+        }]
     },
     options: chartDefaults
 });
 
-const trendsData = {{ pipeline_trends | tojson }};
+// Engagement chart
+const engagementData = {{ engagement_chart | tojson }};
+if (engagementData.length > 0) {
+    new Chart(document.getElementById('engagementChart'), {
+        type: 'line',
+        data: {
+            labels: engagementData.map(d => d.day.slice(5)),
+            datasets: [
+                { label: 'Delivered', data: engagementData.map(d => d.delivered), borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.05)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHitRadius: 10 },
+                { label: 'Opened', data: engagementData.map(d => d.opened), borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.05)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHitRadius: 10 },
+                { label: 'Clicked', data: engagementData.map(d => d.clicked), borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.05)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHitRadius: 10 },
+            ]
+        },
+        options: { ...chartDefaults, plugins: { legend: { display: true, labels: { color: '#64748b', font: chartFont, usePointStyle: true, pointStyle: 'circle', padding: 16 } } } }
+    });
+}
 
+// Pipeline trends
+const trendsData = {{ pipeline_trends | tojson }};
 if (trendsData.length > 0) {
     new Chart(document.getElementById('pipelineTrendsChart'), {
         type: 'line',
         data: {
-            labels: trendsData.map(d => d.day),
+            labels: trendsData.map(d => d.day.slice(5)),
             datasets: [
-                {
-                    label: 'Postings Scraped',
-                    data: trendsData.map(d => d.total_scraped),
-                    borderColor: '#3b82f6',
-                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                    fill: true,
-                    tension: 0.3,
-                },
-                {
-                    label: 'Prospects Found',
-                    data: trendsData.map(d => d.total_prospects),
-                    borderColor: '#8b5cf6',
-                    backgroundColor: 'rgba(139, 92, 246, 0.1)',
-                    fill: true,
-                    tension: 0.3,
-                }
+                { label: 'Postings', data: trendsData.map(d => d.total_scraped), borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.05)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHitRadius: 10 },
+                { label: 'Prospects', data: trendsData.map(d => d.total_prospects), borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.05)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHitRadius: 10 },
             ]
         },
-        options: {
-            ...chartDefaults,
-            plugins: { legend: { display: true, labels: { color: '#94a3b8' } } }
-        }
+        options: { ...chartDefaults, plugins: { legend: { display: true, labels: { color: '#64748b', font: chartFont, usePointStyle: true, pointStyle: 'circle', padding: 16 } } } }
     });
 }
 </script>
