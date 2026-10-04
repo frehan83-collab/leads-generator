@@ -18,8 +18,9 @@ logger = logging.getLogger(__name__)
 
 
 def _get_keywords() -> list[str]:
-    raw = os.getenv("FINN_KEYWORDS", "seafood,aquaculture,sjømat,biologi")
-    return [k.strip() for k in raw.split(",") if k.strip()]
+    from src.config import resolve_keywords
+
+    return resolve_keywords()
 
 
 def run_pipeline() -> None:

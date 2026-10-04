@@ -155,3 +155,20 @@ settings = Settings()
 def log_config_status() -> None:
     for problem in settings.validate():
         logger.warning("Config: %s", problem)
+
+
+def resolve_keywords() -> list[str]:
+    """Keywords for a pipeline run: Settings table first, .env fallback.
+
+    The table is what the user edits in the UI (/settings). The .env list
+    seeds the table on first load and covers fresh/empty databases.
+    """
+    try:
+        from src.database import db
+
+        words = db.get_keyword_list()
+        if words:
+            return words
+    except Exception as exc:
+        logger.warning("Keyword table unreadable, falling back to .env: %s", exc)
+    return list(settings.finn_keywords)

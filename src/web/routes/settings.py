@@ -121,18 +121,11 @@ def run_pipeline():
 
     def _run():
         try:
+            from src.config import resolve_keywords
             from src.pipeline.lead_pipeline import LeadPipeline
 
             _ensure_keywords_seeded()
-            keywords = db.get_keyword_list()
-            if not keywords:
-                keywords = [
-                    k.strip()
-                    for k in os.getenv("FINN_KEYWORDS", "seafood,aquaculture").split(
-                        ","
-                    )
-                    if k.strip()
-                ]
+            keywords = resolve_keywords()
             snov_list_id = os.getenv("SNOV_LIST_ID")
             pipeline = LeadPipeline(snov_list_id=snov_list_id)
             pipeline.run(keywords)

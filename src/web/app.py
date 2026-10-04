@@ -100,14 +100,15 @@ def _run_scheduler(run_time: str) -> None:
 
     run_time = Settings.validate_time(run_time, "RUN_TIME")
     send_time = Settings.validate_time(os.getenv("SEND_TIME", "08:30"), "SEND_TIME")
-    keywords = settings.finn_keywords
     snov_list_id = settings.snov_list_id
 
     def _pipeline_job():
         logger.info("Scheduled pipeline triggered at %s", run_time)
         try:
+            from src.config import resolve_keywords
+
             pipeline = LeadPipeline(snov_list_id=snov_list_id)
-            pipeline.run(keywords)
+            pipeline.run(resolve_keywords())
         except Exception as exc:
             logger.error("Scheduled pipeline failed: %s", exc, exc_info=True)
 

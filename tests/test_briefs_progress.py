@@ -252,6 +252,27 @@ def test_validate_time():
             Settings.validate_time(bad, "RUN_TIME")
 
 
+def test_resolve_keywords_prefers_table(tmp_path, monkeypatch):
+    from src.config import resolve_keywords
+
+    monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "t.db")
+    db_module.init_db()
+    db_module.add_keyword("laks")
+    assert resolve_keywords() == ["laks"]
+
+
+def test_resolve_keywords_falls_back_to_env(tmp_path, monkeypatch):
+    import src.config as config_mod
+    from src.config import Settings, resolve_keywords
+
+    monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "t.db")
+    db_module.init_db()
+    monkeypatch.setattr(
+        config_mod, "settings", Settings(finn_keywords=["sei", "torsk"])
+    )
+    assert resolve_keywords() == ["sei", "torsk"]
+
+
 def test_list_recent_exports_empty(tmp_path, monkeypatch):
     import src.export.csv_exporter as csv_exporter
 
