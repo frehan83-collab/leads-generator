@@ -25,9 +25,10 @@ def cmd_web(host: str = "127.0.0.1", port: int = 5000):
 
 
 def cmd_run_now(sources: list[str] = None):
+    from src.config import settings
     from src.pipeline.lead_pipeline import LeadPipeline
-    keywords = [k.strip() for k in os.getenv("FINN_KEYWORDS", "seafood").split(",")]
-    snov_list_id = os.getenv("SNOV_LIST_ID")
+    keywords = settings.finn_keywords
+    snov_list_id = settings.snov_list_id
 
     # Default to both finn and nav if not specified
     if not sources:

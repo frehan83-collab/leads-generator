@@ -7,6 +7,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 from src.snov.client import SnovClient
+from src.snov.errors import SnovError, SnovAuthError, SnovOutOfCredits
 
 
 @pytest.fixture
@@ -101,3 +102,51 @@ def test_add_prospect_to_list(client):
             "company_domain": "aquacorp.no",
         })
         assert result is True
+
+
+# --- typed errors: fatal problems raise, transient ones degrade --------
+
+def test_402_raises_out_of_credits(client):
+    with patch("requests.post") as mock_post:
+        mock_post.return_value = mock_response({}, status_code=402)
+        with pytest.raises(SnovOutOfCredits):
+            client.get_domain_email_count("aquacorp.no")
+
+
+def test_401_raises_auth_error(client):
+    with patch("requests.get") as mock_get:
+        mock_get.return_value = mock_response({}, status_code=401)
+        with pytest.raises(SnovAuthError):
+            client.get_balance()
+
+
+def test_error_payload_raises_snov_error(client):
+    with patch("requests.post") as mock_post:
+        mock_post.return_value = mock_response(
+            {"success": False, "message": "something broke"}
+        )
+        with pytest.raises(SnovError):
+            client.get_domain_email_count("aquacorp.no")
+
+
+def test_credit_payload_raises_out_of_credits(client):
+    with patch("requests.post") as mock_post:
+        mock_post.return_value = mock_response(
+            {"success": False, "message": "Insufficient credits balance"}
+        )
+        with pytest.raises(SnovOutOfCredits):
+            client.get_domain_email_count("aquacorp.no")
+
+
+def test_public_method_reraises_fatal(client):
+    with patch.object(client, "_post", side_effect=SnovOutOfCredits("empty")):
+        with pytest.raises(SnovOutOfCredits):
+            client.find_domain_by_company_name("AquaCorp")
+
+
+def test_public_method_returns_none_on_transient(client):
+    import requests
+    with patch.object(client, "_post", side_effect=requests.exceptions.ConnectionError("down")):
+        assert client.find_domain_by_company_name("AquaCorp") is None
+    with patch.object(client, "_post", side_effect=requests.exceptions.ConnectionError("down")):
+        assert client.get_prospects_by_domain("aquacorp.no") == []

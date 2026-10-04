@@ -126,3 +126,34 @@ def test_404_and_500_pages_render():
     r404 = client.get("/no-such-page")
     assert r404.status_code == 404
     assert b"404" in r404.data
+
+
+# --- dashboard basic auth -------------------------------------------------
+
+def test_dashboard_open_without_credentials(monkeypatch):
+    from src.config import Settings
+    import src.web.app as app_module
+    monkeypatch.setattr(app_module, "settings", Settings())
+    app = app_module.create_app()
+    app.config["TESTING"] = True
+    assert app.test_client().get("/").status_code == 200
+
+
+def test_dashboard_auth_required(monkeypatch):
+    import base64
+    from src.config import Settings
+    import src.web.app as app_module
+    monkeypatch.setattr(
+        app_module, "settings",
+        Settings(dashboard_user="boss", dashboard_pass="s3cret"),
+    )
+    app = app_module.create_app()
+    app.config["TESTING"] = True
+    client = app.test_client()
+    assert client.get("/").status_code == 401
+    good = base64.b64encode(b"boss:s3cret").decode()
+    assert client.get("/", headers={"Authorization": f"Basic {good}"}).status_code == 200
+    bad = base64.b64encode(b"boss:wrong").decode()
+    assert client.get("/", headers={"Authorization": f"Basic {bad}"}).status_code == 401
+    # Resend webhook stays open so events are never blocked
+    assert client.post("/webhooks/resend", json={}).status_code != 401

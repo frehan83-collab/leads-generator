@@ -11,11 +11,10 @@ import threading
 from typing import Optional
 
 import requests
-from dotenv import load_dotenv
 
+from src.snov.errors import SnovError, SnovAuthError, SnovOutOfCredits, is_credit_error_text
 from src.utils.retry import retry
 
-load_dotenv()
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.snov.io"
@@ -68,6 +67,39 @@ class SnovClient:
     def _headers(self) -> dict:
         return {"Authorization": f"Bearer {self._get_token()}"}
 
+    @staticmethod
+    def _raise_for_status_code(resp: requests.Response, op: str) -> None:
+        """Map fatal HTTP statuses to typed errors (not retried)."""
+        code = resp.status_code
+        if code in (401, 403):
+            raise SnovAuthError(
+                f"Snov.io {op} rejected credentials (HTTP {code}). "
+                "Check SNOV_CLIENT_ID / SNOV_CLIENT_SECRET."
+            )
+        if code == 402:
+            raise SnovOutOfCredits(
+                f"Snov.io {op} failed: payment required (HTTP 402). "
+                "Account balance is empty — top up before re-running."
+            )
+
+    @staticmethod
+    def _check_payload(result, op: str):
+        """Detect error payloads returned with HTTP 200 and raise typed errors."""
+        if not isinstance(result, dict):
+            return result
+        if result.get("success") is False:
+            message = str(result.get("message") or result.get("error") or "unknown API error")
+            if is_credit_error_text(message):
+                raise SnovOutOfCredits(f"Snov.io {op} failed: {message}")
+            raise SnovError(f"Snov.io {op} failed: {message}")
+        err = result.get("error")
+        if err and not result.get("data"):
+            message = str(err if isinstance(err, str) else err.get("message", err))
+            if is_credit_error_text(message):
+                raise SnovOutOfCredits(f"Snov.io {op} failed: {message}")
+            raise SnovError(f"Snov.io {op} failed: {message}")
+        return result
+
     @retry(max_attempts=3, base_delay=1.5, retryable_exceptions=(requests.exceptions.RequestException,))
     def _get(self, path: str, params: dict = None) -> dict:
         with self._call_lock:
@@ -78,8 +110,9 @@ class SnovClient:
                 params=params or {},
                 timeout=30,
             )
+            self._raise_for_status_code(resp, f"GET {path}")
             resp.raise_for_status()
-            return resp.json()
+            return self._check_payload(resp.json(), f"GET {path}")
 
     @retry(max_attempts=3, base_delay=1.5, retryable_exceptions=(requests.exceptions.RequestException,))
     def _post(self, path: str, data: dict = None) -> dict:
@@ -91,8 +124,9 @@ class SnovClient:
                 json=data or {},
                 timeout=30,
             )
+            self._raise_for_status_code(resp, f"POST {path}")
             resp.raise_for_status()
-            return resp.json()
+            return self._check_payload(resp.json(), f"POST {path}")
 
     # ------------------------------------------------------------------
     # Async start/poll helpers
@@ -108,6 +142,8 @@ class SnovClient:
                     return result
                 logger.debug("Task %s not ready yet, waiting...", task_hash)
                 time.sleep(3)
+            except SnovError:
+                raise
             except Exception as exc:
                 logger.warning("Poll error for %s: %s", task_hash, exc)
                 break
@@ -150,6 +186,8 @@ class SnovClient:
                 domain = items[0].get("domain")
                 logger.info("Domain for '%s': %s", company_name, domain)
                 return domain
+        except SnovError:
+            raise
         except Exception as exc:
             logger.error("find_domain_by_company_name error: %s", exc)
         return None
@@ -161,6 +199,8 @@ class SnovClient:
             count = result.get("data", {}).get("total") or 0
             logger.debug("Email count for %s: %d", domain, count)
             return count
+        except SnovError:
+            raise
         except Exception as exc:
             logger.warning("get_domain_email_count error: %s", exc)
             return 0
@@ -175,6 +215,8 @@ class SnovClient:
             if not task_hash:
                 return None
             return self._poll(f"/v2/domain-search/result/{task_hash}", task_hash)
+        except SnovError:
+            raise
         except Exception as exc:
             logger.error("search_domain error for %s: %s", domain, exc)
         return None
@@ -208,6 +250,8 @@ class SnovClient:
             prospects = result.get("data") or []
             logger.info("Found %d prospects for domain %s", len(prospects), domain)
             return prospects
+        except SnovError:
+            raise
         except Exception as exc:
             logger.error("get_prospects_by_domain error: %s", exc)
         return []
@@ -250,6 +294,8 @@ class SnovClient:
                         "Email found: %s (status: %s)", email, status
                     )
                     return {"email": email, "smtp_status": status}
+        except SnovError:
+            raise
         except Exception as exc:
             logger.error("find_email_by_name_domain error: %s", exc)
         return None
@@ -287,6 +333,8 @@ class SnovClient:
                 )
                 logger.info("Email %s verification: %s", email, smtp_status)
                 return smtp_status
+        except SnovError:
+            raise
         except Exception as exc:
             logger.error("verify_email error: %s", exc)
         return None
@@ -302,6 +350,8 @@ class SnovClient:
                 "/v1/get-profile-by-email", {"email": email}
             )
             return result.get("data") or result
+        except SnovError:
+            raise
         except Exception as exc:
             logger.error("get_profile_by_email error: %s", exc)
         return None
@@ -318,6 +368,8 @@ class SnovClient:
             result = self._poll("/v2/li-profiles-by-urls/result", task_hash)
             items = (result or {}).get("data") or []
             return items[0] if items else None
+        except SnovError:
+            raise
         except Exception as exc:
             logger.error("get_linkedin_profile error: %s", exc)
         return None
@@ -334,6 +386,8 @@ class SnovClient:
             if isinstance(result, list):
                 return result
             return result.get("data") or []
+        except SnovError:
+            raise
         except Exception as exc:
             logger.error("get_user_lists error: %s", exc)
         return []
@@ -345,6 +399,8 @@ class SnovClient:
             list_id = (result.get("data") or {}).get("id") or result.get("id")
             logger.info("Created Snov list '%s' id=%s", name, list_id)
             return str(list_id) if list_id else None
+        except SnovError:
+            raise
         except Exception as exc:
             logger.error("create_list error: %s", exc)
         return None
@@ -383,6 +439,8 @@ class SnovClient:
                 added,
             )
             return bool(added)
+        except SnovError:
+            raise
         except Exception as exc:
             logger.error("add_prospect_to_list error: %s", exc)
         return False
@@ -394,6 +452,8 @@ class SnovClient:
                 "/v2/statistics/campaign-analytics",
                 {"campaign_id": campaign_id},
             )
+        except SnovError:
+            raise
         except Exception as exc:
             logger.error("get_campaign_analytics error: %s", exc)
         return None
@@ -403,6 +463,8 @@ class SnovClient:
         try:
             result = self._get("/v1/get-user-campaigns")
             return result.get("data") or []
+        except SnovError:
+            raise
         except Exception as exc:
             logger.error("get_user_campaigns error: %s", exc)
         return []

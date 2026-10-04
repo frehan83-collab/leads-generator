@@ -196,9 +196,14 @@ def _get_mailto_contacts(page) -> list[dict]:
         return []
 
 
-def _scrape_pages(page, domain: str, base_url: str, timeout_sec: int, found: dict) -> None:
+def _scrape_pages(page, domain: str, base_url: str, timeout_sec: int, found: dict,
+                  deadline: float | None = None) -> None:
     """Core scraping logic — visit contact pages and extract emails into `found` dict."""
+    import time as _time
+
     for path in CONTACT_PATHS:
+        if deadline is not None and _time.monotonic() > deadline:
+            break
         url = base_url + path
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=timeout_sec * 1000)
@@ -283,7 +288,8 @@ def _scrape_pages(page, domain: str, base_url: str, timeout_sec: int, found: dic
             continue
 
 
-def scrape_emails_from_website(domain: str, timeout_sec: int = 20, browser=None) -> list[dict]:
+def scrape_emails_from_website(domain: str, timeout_sec: int = 20, browser=None,
+                               deadline: float | None = None) -> list[dict]:
     """
     Visit the company website and return a ranked list of contacts.
     Each contact is a dict: {"email": str, "title": str, "name": str}
@@ -293,6 +299,7 @@ def scrape_emails_from_website(domain: str, timeout_sec: int = 20, browser=None)
         domain: Company domain to scrape
         timeout_sec: Timeout in seconds per page load
         browser: Optional shared Playwright browser instance for reuse
+        deadline: Optional monotonic timestamp — stop visiting new pages after it
     """
     if not domain:
         return []
@@ -315,7 +322,7 @@ def scrape_emails_from_website(domain: str, timeout_sec: int = 20, browser=None)
                     locale="nb-NO",
                 )
                 page = context.new_page()
-                _scrape_pages(page, domain, base_url, timeout_sec, found)
+                _scrape_pages(page, domain, base_url, timeout_sec, found, deadline)
                 br.close()
         else:
             # Shared browser mode
@@ -323,7 +330,7 @@ def scrape_emails_from_website(domain: str, timeout_sec: int = 20, browser=None)
             ctx = browser.new_context(user_agent=USER_AGENT, locale="nb-NO")
             page = ctx.new_page()
             try:
-                _scrape_pages(page, domain, base_url, timeout_sec, found)
+                _scrape_pages(page, domain, base_url, timeout_sec, found, deadline)
             finally:
                 ctx.close()
 

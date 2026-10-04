@@ -9,7 +9,7 @@ import threading
 import time
 
 import schedule
-from flask import Flask, render_template
+from flask import Flask, render_template, request, Response
 
 from src.database import db
 from src.config import settings
@@ -57,6 +57,25 @@ def create_app() -> Flask:
     def server_error(_e):
         return render_template("500.html"), 500
 
+    # Optional HTTP basic auth (set DASHBOARD_USER + DASHBOARD_PASS).
+    # Webhooks stay open so Resend can always deliver events.
+    if settings.dashboard_user and settings.dashboard_pass:
+        @app.before_request
+        def _require_auth():
+            if request.path.startswith("/webhooks/") or request.path.startswith("/static/"):
+                return None
+            auth = request.authorization
+            if not auth or auth.username != settings.dashboard_user or auth.password != settings.dashboard_pass:
+                return Response(
+                    "Dashboard is password-protected.\n", 401,
+                    {"WWW-Authenticate": 'Basic realm="Sperton"'},
+                )
+    else:
+        logger.warning(
+            "DASHBOARD_USER/DASHBOARD_PASS not set — dashboard has no login. "
+            "Bind to 127.0.0.1 only."
+        )
+
     return app
 
 
@@ -64,12 +83,8 @@ def _run_scheduler(run_time: str) -> None:
     """Background thread: runs the pipeline and send job on daily schedules."""
     from src.pipeline.lead_pipeline import LeadPipeline
 
-    keywords = [
-        k.strip()
-        for k in os.getenv("FINN_KEYWORDS", "seafood,aquaculture").split(",")
-        if k.strip()
-    ]
-    snov_list_id = os.getenv("SNOV_LIST_ID")
+    keywords = settings.finn_keywords
+    snov_list_id = settings.snov_list_id
 
     def _pipeline_job():
         logger.info("Scheduled pipeline triggered at %s", run_time)
@@ -111,7 +126,11 @@ def _run_scheduler(run_time: str) -> None:
 
 
 def start_web(host: str = "127.0.0.1", port: int = 5000, with_scheduler: bool = True) -> None:
-    """Start Flask dev server with optional background scheduler."""
+    """Start the dashboard with optional background scheduler.
+
+    Uses waitress (production WSGI) when installed, else the Flask dev
+    server (local use only).
+    """
     run_time = os.getenv("RUN_TIME", "09:30")
 
     if with_scheduler:
@@ -119,5 +138,11 @@ def start_web(host: str = "127.0.0.1", port: int = 5000, with_scheduler: bool = 
         t.start()
 
     app = create_app()
-    logger.info("Starting web dashboard at http://%s:%d", host, port)
-    app.run(host=host, port=port, debug=False, use_reloader=False)
+    try:
+        from waitress import serve
+        logger.info("Serving dashboard at http://%s:%d (waitress)", host, port)
+        serve(app, host=host, port=port)
+    except ImportError:
+        logger.warning("waitress not installed — using Flask dev server (local only)")
+        logger.info("Starting web dashboard at http://%s:%d", host, port)
+        app.run(host=host, port=port, debug=False, use_reloader=False)

@@ -38,11 +38,18 @@ class Settings:
     finn_keywords: list[str] = field(default_factory=lambda: _as_list(
         os.getenv("FINN_KEYWORDS"), ["seafood", "aquaculture", "sjømat"]))
     run_time: str = os.getenv("RUN_TIME", "09:30")
+    # Bounded parallel posting processing (1 = sequential, current default
+    # behaviour preserved; 2-4 recommended once Snov credits allow).
+    pipeline_workers: int = max(1, int(os.getenv("PIPELINE_WORKERS", "1")))
+    # Max seconds spent on a single company domain (website + enrichment).
+    domain_timeout_sec: int = int(os.getenv("DOMAIN_TIMEOUT_SEC", "300"))
 
     # -- Snov.io --------------------------------------------------------
     snov_client_id: str | None = os.getenv("SNOV_CLIENT_ID")
     snov_client_secret: str | None = os.getenv("SNOV_CLIENT_SECRET")
     snov_list_id: str | None = os.getenv("SNOV_LIST_ID")
+    # Abort a run before burning time when balance is empty or below this.
+    snov_min_credits: int = int(os.getenv("SNOV_MIN_CREDITS", "0"))
 
     # -- Outreach -------------------------------------------------------
     resend_api_key: str | None = os.getenv("RESEND_API_KEY")
@@ -61,6 +68,9 @@ class Settings:
     # -- Web ------------------------------------------------------------
     flask_secret: str | None = os.getenv("FLASK_SECRET")
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
+    # Dashboard basic auth. Unset = open dashboard (local use only) + warning.
+    dashboard_user: str | None = os.getenv("DASHBOARD_USER")
+    dashboard_pass: str | None = os.getenv("DASHBOARD_PASS")
 
     def resolved_flask_secret(self) -> str:
         """Return the configured secret, or an ephemeral one with a warning."""

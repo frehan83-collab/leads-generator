@@ -23,6 +23,7 @@ def get_connection() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
 
@@ -82,6 +83,10 @@ _UPDATABLE_COLUMNS: dict[str, frozenset[str]] = {
     "linkedin_messages": frozenset({
         "message_type", "message_text", "status", "copied_at",
         "sent_at", "replied_at", "notes", "prospect_id", "draft_id",
+    }),
+    "job_postings": frozenset({
+        "title", "company_name", "company_domain", "org_number",
+        "location", "url", "keyword_matched", "published_at",
     }),
 }
 
@@ -404,6 +409,21 @@ def insert_job_posting(data: dict) -> Optional[int]:
             )
             return cur.lastrowid
     return None
+
+
+def update_job_posting(posting_id: int, data: dict) -> None:
+    """Update fields on a job posting. Keys must be in the allowlist."""
+    unknown = set(data) - _UPDATABLE_COLUMNS["job_postings"]
+    if unknown:
+        raise ValueError(f"Cannot update job_postings columns: {sorted(unknown)}")
+    if not data:
+        return
+    sets = [f"{key} = ?" for key in data]
+    params = list(data.values()) + [posting_id]
+    with get_connection() as conn:
+        conn.execute(
+            f"UPDATE job_postings SET {', '.join(sets)} WHERE id = ?", params
+        )
 
 
 def get_job_postings(

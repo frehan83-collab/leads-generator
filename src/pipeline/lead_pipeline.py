@@ -7,6 +7,7 @@ Auto-exports CSV and tracks pipeline runs in the database.
 import logging
 import os
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Optional
@@ -18,6 +19,7 @@ from src.scraper.nav_scraper import scrape_all_keywords as scrape_nav
 from src.scraper.website_scraper import scrape_emails_from_website
 from src.scraper.browser_manager import BrowserManager
 from src.snov.client import SnovClient
+from src.snov.errors import SnovAuthError, SnovOutOfCredits
 from src.brreg.client import BRREGClient
 from src.database import db
 from src.emails.drafter import auto_draft_for_new_prospect
@@ -39,6 +41,10 @@ TARGET_POSITIONS = [
     "HR-sjef",
     "Personalsjef",
 ]
+
+
+class _DomainTimeout(Exception):
+    """Raised when a single domain exceeds its processing time budget."""
 
 
 class LeadPipeline:
@@ -76,6 +82,9 @@ class LeadPipeline:
         Full pipeline run for a list of keywords.
         Returns stats dict.
         """
+        from src.config import settings as _settings
+        from src.snov.errors import SnovAuthError, SnovOutOfCredits
+
         logger.info("=== Lead pipeline starting -- %s ===", datetime.now(timezone.utc).isoformat())
         db.init_db()
 
@@ -87,25 +96,26 @@ class LeadPipeline:
             if not self.snov_list_id:
                 self.snov_list_id = self._ensure_snov_list()
 
+            # Credit guard: never burn hours on an empty Snov balance.
+            self._check_snov_balance(_settings.snov_min_credits)
+
+            # Step 1: Collect ALL postings from all sources (shared browser)
             with BrowserManager() as bm:
-                # Step 1: Collect ALL postings from all sources (shared browser)
                 postings = self._scrape_all_sources(keywords, browser=bm.browser)
                 self._stats["postings_scraped"] = len(postings)
                 logger.info("Scraped %d total postings from %d sources", len(postings), len(self.sources))
                 for source, count in self._stats["postings_by_source"].items():
                     logger.info("  - %s: %d postings", source, count)
 
-                # Step 2: Process postings (sequential — browser contexts are not thread-safe)
-                for posting in postings:
-                    try:
-                        self._process_posting(posting, browser=bm.browser)
-                    except Exception as exc:
-                        logger.error(
-                            "Error processing posting %s: %s",
-                            posting.get("external_id", "?"), exc,
-                        )
-                        with self._stats_lock:
-                            self._stats["errors"] += 1
+            # Step 2: Process postings (sequential or bounded parallel)
+            workers = _settings.pipeline_workers
+            if workers <= 1:
+                with BrowserManager() as bm:
+                    for posting in postings:
+                        self._process_posting_guarded(posting, bm.browser)
+            else:
+                logger.info("Processing %d postings with %d workers", len(postings), workers)
+                self._process_postings_parallel(postings, workers)
 
             # Step 3: Calculate intent scores for companies with new postings
             self._calculate_intent_scores()
@@ -118,6 +128,11 @@ class LeadPipeline:
             # Mark run as completed
             self._finish_run("completed", csv_path=csv_path)
 
+        except (SnovAuthError, SnovOutOfCredits) as exc:
+            logger.error("Pipeline aborted: %s", exc)
+            self._stats["errors"] += 1
+            self._finish_run("failed", error_message=f"{type(exc).__name__}: {exc}")
+            raise
         except Exception as exc:
             logger.error("Pipeline failed: %s", exc, exc_info=True)
             self._stats["errors"] += 1
@@ -126,6 +141,99 @@ class LeadPipeline:
 
         self._log_stats()
         return self._stats
+
+    def _process_posting_guarded(self, posting: dict, browser=None) -> None:
+        """Process one posting; isolated errors count and continue."""
+        from src.snov.errors import SnovAuthError, SnovOutOfCredits
+
+        try:
+            self._process_posting(posting, browser=browser)
+        except (SnovAuthError, SnovOutOfCredits):
+            raise  # fatal: abort the whole run, don't swallow per posting
+        except _DomainTimeout as exc:
+            logger.warning("Skipped posting %s: domain %s timed out",
+                           posting.get("external_id", "?"), exc)
+            with self._stats_lock:
+                self._stats["errors"] += 1
+        except Exception as exc:
+            logger.error(
+                "Error processing posting %s: %s",
+                posting.get("external_id", "?"), exc,
+            )
+            with self._stats_lock:
+                self._stats["errors"] += 1
+
+    def _process_postings_parallel(self, postings: list[dict], workers: int) -> None:
+        """Bounded parallel processing; each worker owns its browser.
+
+        Playwright sync objects are not thread-safe, so workers never share
+        a browser — each thread creates and destroys its own BrowserManager.
+        SQLite handles concurrent writers via WAL + busy_timeout; stats stay
+        behind the existing _stats_lock.
+        """
+        import threading as _threading
+
+        _local = _threading.local()
+        _managers: list = []
+        _managers_lock = _threading.Lock()
+
+        def _worker_browser():
+            bm = getattr(_local, "bm", None)
+            if bm is None:
+                bm = BrowserManager()
+                bm.__enter__()
+                _local.bm = bm
+                with _managers_lock:
+                    _managers.append(bm)
+            return bm.browser
+
+        def _work(posting: dict) -> None:
+            self._process_posting_guarded(posting, browser=_worker_browser())
+
+        try:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = {pool.submit(_work, p): p for p in postings}
+                for future in as_completed(futures):
+                    future.result()  # raises fatal Snov errors to abort the run
+        finally:
+            for bm in _managers:
+                try:
+                    bm.__exit__(None, None, None)
+                except Exception:
+                    pass
+
+    def _check_snov_balance(self, min_credits: int) -> None:
+        """Abort early when the Snov.io balance can't fund a run."""
+        from src.snov.errors import SnovError, SnovOutOfCredits
+
+        try:
+            balance = self._snov_balance_probe()
+        except SnovError as exc:
+            logger.warning("Could not read Snov.io balance, continuing: %s", exc)
+            return
+        if balance is None:
+            return
+        logger.info("Snov.io balance: %s credits", balance)
+        if balance <= 0:
+            raise SnovOutOfCredits(
+                "Snov.io balance is 0 — top up before running the pipeline."
+            )
+        if min_credits and balance < min_credits:
+            raise SnovOutOfCredits(
+                f"Snov.io balance ({balance}) below SNOV_MIN_CREDITS ({min_credits})."
+            )
+
+    def _snov_balance_probe(self):
+        """Best-effort credit read; returns int, None if unreadable."""
+        result = self.snov.get_balance()
+        if not isinstance(result, dict):
+            return None
+        data = result.get("data", result)
+        if isinstance(data, dict):
+            for key in ("balance", "credits", "credits_left", "remaining"):
+                if isinstance(data.get(key), (int, float)):
+                    return int(data[key])
+        return None
 
     # ------------------------------------------------------------------
     # Run tracking
@@ -349,8 +457,21 @@ class LeadPipeline:
 
         return None
 
+    @staticmethod
+    def _check_deadline(deadline: float, domain: str, soft: bool = False) -> bool:
+        """Return True (soft) or raise (hard) when the domain budget is spent."""
+        if time.monotonic() > deadline:
+            logger.warning("Domain time budget exceeded for %s, moving on", domain)
+            if soft:
+                return True
+            raise _DomainTimeout(domain)
+        return False
+
     def _process_posting(self, posting: dict, browser=None) -> None:
         """Process a single job posting through the full pipeline."""
+        from src.config import settings as _settings
+
+        deadline = time.monotonic() + _settings.domain_timeout_sec
         company_name = posting.get("company_name", "").strip()
         source = posting.get("source", "unknown")
         external_id = posting.get("external_id", posting.get("finn_id", ""))
@@ -359,7 +480,9 @@ class LeadPipeline:
             logger.debug("Skipping posting %s from %s -- no company name", external_id, source)
             return
 
-        # 1. Store job posting (skip if already in DB)
+        # 1. Store job posting (skip if already in DB). The UNIQUE
+        # (source, external_id) key makes re-runs idempotent: a posting is
+        # never processed twice even if a previous run died mid-posting.
         posting_id = db.insert_job_posting(posting)
         if posting_id is None:
             logger.debug("Posting %s (%s) already in DB, skipping", external_id, source)
@@ -383,28 +506,33 @@ class LeadPipeline:
             with self._stats_lock:
                 self._stats["errors"] += 1
             return
+        self._check_deadline(deadline, domain)
 
         # Update posting with domain and org_number
-        with db.get_connection() as conn:
-            conn.execute(
-                "UPDATE job_postings SET company_domain = ?, org_number = ? WHERE id = ?",
-                (domain, org_number, posting_id),
-            )
+        db.update_job_posting(posting_id, {
+            "company_domain": domain,
+            "org_number": org_number,
+        })
         with self._stats_lock:
             self._stats["domains_resolved"] += 1
 
-        # 3. Primary: scrape emails directly from the company website
+        # 4. Primary: scrape emails directly from the company website
         # Returns list of {"email": str, "title": str, "name": str}
         # Check website cache first
         website_contacts = db.get_cached_contacts(domain)
         if website_contacts is None:
-            website_contacts = scrape_emails_from_website(domain, browser=browser)
+            website_contacts = scrape_emails_from_website(
+                domain, browser=browser, deadline=deadline,
+            )
             db.cache_contacts(domain, website_contacts or [])
+        stored_any = False
         if website_contacts:
             with self._stats_lock:
                 self._stats["prospects_found"] += len(website_contacts)
             for contact in website_contacts:
-                self._process_raw_email(
+                if self._check_deadline(deadline, domain, soft=True):
+                    break
+                stored_id = self._process_raw_email(
                     contact["email"],
                     domain,
                     posting_id,
@@ -412,9 +540,14 @@ class LeadPipeline:
                     title=contact.get("title", ""),
                     scraped_name=contact.get("name", ""),
                 )
-            return  # done for this posting
+                stored_any = stored_any or stored_id is not None
 
-        # 4. Fallback: try Snov.io domain search (works for global companies)
+        # 5. Snov.io domain search — runs when the website yielded nothing
+        # storable (not merely when the contact list was empty), so Snov
+        # credits are spent only where website scraping came up short.
+        if stored_any:
+            return
+        self._check_deadline(deadline, domain)
         email_count = self.snov.get_domain_email_count(domain)
         if email_count == 0:
             logger.info("No emails found via website scrape or Snov.io for %s", domain)
@@ -480,10 +613,11 @@ class LeadPipeline:
         posting: dict,
         title: str = "",
         scraped_name: str = "",
-    ) -> None:
+    ) -> Optional[int]:
         """
         Handle an email found directly from the company website.
         title and scraped_name come from the website scraper's context parsing.
+        Returns the new prospect id, or None if skipped/duplicate.
         """
         if db.email_exists(email):
             logger.debug("Email %s already in DB, skipping", email)
@@ -497,6 +631,8 @@ class LeadPipeline:
         try:
             verified = self.snov.verify_email(email)
             smtp_status = verified or "unknown"
+        except (SnovAuthError, SnovOutOfCredits):
+            raise  # fatal: abort the run, don't degrade per email
         except Exception:
             smtp_status = "unknown"
 
@@ -540,7 +676,7 @@ class LeadPipeline:
         }
         prospect_id = db.insert_prospect(prospect_record)
         if not prospect_id:
-            return
+            return None
 
         # Auto-draft email campaign for this prospect
         try:
@@ -564,6 +700,8 @@ class LeadPipeline:
                     "notes": f"Website scraped from {domain}, {posting.get('source', 'finn')} posting {posting.get('external_id', posting.get('finn_id', ''))}",
                 })
                 logger.info("Added %s to Snov list %s", email, self.snov_list_id)
+
+        return prospect_id
 
     def _process_prospect(
         self,

@@ -44,6 +44,9 @@ python main.py --host 0.0.0.0 --port 8080
 |---|---|---|
 | `FINN_KEYWORDS` | `seafood,aquaculture,sjømat` | comma-separated search keywords |
 | `RUN_TIME` / `SEND_TIME` | `09:30` / `08:30` UTC | daily pipeline / send-job times |
+| `PIPELINE_WORKERS` | `1` | parallel posting workers (`2`–`4` with Snov credits) |
+| `DOMAIN_TIMEOUT_SEC` | `300` | max seconds per company domain |
+| `SNOV_MIN_CREDITS` | `0` | abort run below this balance (`0` = only when empty) |
 | `SNOV_CLIENT_ID` / `SNOV_CLIENT_SECRET` | — | enrichment (required for prospects) |
 | `SNOV_LIST_ID` | auto-created | Snov campaign list |
 | `RESEND_API_KEY` | — | direct email sending |
@@ -52,6 +55,7 @@ python main.py --host 0.0.0.0 --port 8080
 | `FOLLOWUP_MIN_DAYS` / `FOLLOWUP_MAX_STEP` | `3` / `3` | follow-up timing and depth |
 | `ANTHROPIC_API_KEY` | — | AI openers (falls back to templates) |
 | `FLASK_SECRET` | ephemeral + warning | set a real value in production |
+| `DASHBOARD_USER` / `DASHBOARD_PASS` | unset (open) | basic-auth login for the dashboard |
 | `LOG_LEVEL` | `INFO` | logging verbosity |
 
 Central defaults and validation live in `src/config.py`.
