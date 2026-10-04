@@ -3,87 +3,262 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Sperton Leads{% endblock %} — Sperton</title>
+    <title>{% block title %}Dashboard{% endblock %} — Sperton</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>tailwind.config = { darkMode: 'class' }</script>
+    <script>
+    tailwind.config = {
+        darkMode: 'class',
+        theme: {
+            extend: {
+                fontFamily: {
+                    sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+                    mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+                },
+                colors: {
+                    surface: {
+                        DEFAULT: '#0b0f1a',
+                        50: '#0d1117',
+                        100: '#0f1419',
+                        200: '#131720',
+                        300: '#171c28',
+                        400: '#1c2333',
+                    }
+                },
+                animation: {
+                    'fade-in': 'fadeIn 0.4s ease-out forwards',
+                    'slide-up': 'slideUp 0.4s ease-out forwards',
+                    'shimmer': 'shimmer 2s linear infinite',
+                    'pulse-dot': 'pulseDot 2s ease-in-out infinite',
+                },
+                keyframes: {
+                    fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
+                    slideUp: { '0%': { opacity: '0', transform: 'translateY(12px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
+                    shimmer: { '0%': { backgroundPosition: '-200% 0' }, '100%': { backgroundPosition: '200% 0' } },
+                    pulseDot: { '0%, 100%': { opacity: '1' }, '50%': { opacity: '0.4' } },
+                }
+            }
+        }
+    }
+    </script>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
-        body { background-color: #0f172a; }
-        .sidebar-link { @apply flex items-center gap-3 px-4 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors text-sm font-medium; }
-        .sidebar-link.active { @apply text-white bg-slate-700; }
-        .card { @apply bg-slate-800 border border-slate-700 rounded-xl p-5; }
-        .badge-draft     { @apply bg-slate-600 text-slate-200; }
-        .badge-approved  { @apply bg-blue-600 text-blue-100; }
-        .badge-sent      { @apply bg-green-700 text-green-100; }
-        .badge-replied   { @apply bg-emerald-600 text-emerald-100; }
-        .badge-valid     { @apply bg-green-700 text-green-100; }
-        .badge-unknown   { @apply bg-yellow-700 text-yellow-100; }
-        .badge-not_valid { @apply bg-red-700 text-red-100; }
-        .badge-running   { @apply bg-blue-600 text-blue-100; }
-        .badge-completed { @apply bg-green-700 text-green-100; }
-        .badge-failed    { @apply bg-red-700 text-red-100; }
+        body { background-color: #0b0f1a; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+        .font-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+
+        /* ── Sidebar ── */
+        .sidebar { width: 256px; transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1); }
+        .sidebar.collapsed { width: 68px; }
+        .sidebar.collapsed .sidebar-label,
+        .sidebar.collapsed .sidebar-subtitle,
+        .sidebar.collapsed .sidebar-section-title,
+        .sidebar.collapsed .sidebar-footer-text { display: none; }
+        .sidebar.collapsed .sidebar-logo-full { display: none; }
+        .sidebar.collapsed .sidebar-logo-icon { display: flex; }
+        .sidebar.collapsed .sidebar-link { justify-content: center; padding-left: 0; padding-right: 0; }
+        .sidebar.collapsed .sidebar-link svg { margin: 0; }
+        .sidebar.collapsed .sidebar-nav { padding-left: 0.5rem; padding-right: 0.5rem; }
+
+        .sidebar-link {
+            display: flex; align-items: center; gap: 12px;
+            padding: 9px 14px; border-radius: 10px;
+            color: #64748b; font-size: 13px; font-weight: 500;
+            transition: all 0.15s ease;
+            position: relative;
+        }
+        .sidebar-link:hover { color: #e2e8f0; background: rgba(51, 65, 85, 0.4); }
+        .sidebar-link.active {
+            color: #f1f5f9;
+            background: rgba(59, 130, 246, 0.08);
+        }
+        .sidebar-link.active::before {
+            content: ''; position: absolute; left: -12px; top: 50%; transform: translateY(-50%);
+            width: 3px; height: 20px; border-radius: 0 3px 3px 0;
+            background: #3b82f6;
+        }
+        .sidebar.collapsed .sidebar-link.active::before { left: -8px; }
+
+        /* ── Cards ── */
+        .card {
+            background: rgba(30, 41, 59, 0.5);
+            border: 1px solid rgba(51, 65, 85, 0.4);
+            border-radius: 14px; padding: 20px;
+            backdrop-filter: blur(8px);
+            transition: all 0.2s ease;
+        }
+        .card:hover { border-color: rgba(71, 85, 105, 0.6); background: rgba(30, 41, 59, 0.7); }
+
+        .stat-card {
+            background: rgba(30, 41, 59, 0.5);
+            border: 1px solid rgba(51, 65, 85, 0.4);
+            border-radius: 14px; padding: 20px;
+            backdrop-filter: blur(8px);
+            position: relative; overflow: hidden;
+            transition: all 0.2s ease;
+        }
+        .stat-card:hover { border-color: rgba(71, 85, 105, 0.6); transform: translateY(-1px); }
+        .stat-card .accent-bar { position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+
+        /* ── Badges ── */
+        .badge { font-size: 11px; padding: 2px 8px; border-radius: 6px; font-weight: 600; letter-spacing: 0.02em; }
+        .badge-draft     { background: rgba(100, 116, 139, 0.2); color: #94a3b8; }
+        .badge-approved  { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+        .badge-sent      { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+        .badge-replied   { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; }
+        .badge-valid     { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+        .badge-unknown   { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+        .badge-not_valid { background: rgba(244, 63, 94, 0.15); color: #fb7185; }
+        .badge-running   { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+        .badge-completed { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+        .badge-failed    { background: rgba(244, 63, 94, 0.15); color: #fb7185; }
+        .badge-pending   { background: rgba(100, 116, 139, 0.2); color: #94a3b8; }
+        .badge-copied    { background: rgba(14, 165, 233, 0.15); color: #38bdf8; }
+        .badge-bounced   { background: rgba(244, 63, 94, 0.15); color: #fb7185; }
+        .badge-delivered { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+        .badge-opened    { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+        .badge-clicked   { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; }
+
+        /* ── Buttons ── */
+        .btn-primary { background: #3b82f6; color: white; padding: 8px 16px; border-radius: 10px; font-size: 13px; font-weight: 600; transition: all 0.15s ease; }
+        .btn-primary:hover { background: #2563eb; transform: translateY(-0.5px); box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25); }
+        .btn-secondary { background: rgba(51, 65, 85, 0.5); color: #cbd5e1; padding: 8px 16px; border-radius: 10px; font-size: 13px; font-weight: 500; border: 1px solid rgba(71, 85, 105, 0.5); transition: all 0.15s ease; }
+        .btn-secondary:hover { background: rgba(51, 65, 85, 0.8); border-color: rgba(100, 116, 139, 0.5); }
+        .btn-danger { background: rgba(244, 63, 94, 0.15); color: #fb7185; padding: 8px 16px; border-radius: 10px; font-size: 13px; font-weight: 600; border: 1px solid rgba(244, 63, 94, 0.2); transition: all 0.15s ease; }
+        .btn-danger:hover { background: rgba(244, 63, 94, 0.25); }
+        .btn-success { background: rgba(16, 185, 129, 0.15); color: #34d399; padding: 8px 16px; border-radius: 10px; font-size: 13px; font-weight: 600; border: 1px solid rgba(16, 185, 129, 0.2); transition: all 0.15s ease; }
+        .btn-success:hover { background: rgba(16, 185, 129, 0.25); }
+
+        /* ── Inputs ── */
+        .input { background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(51, 65, 85, 0.5); border-radius: 10px; padding: 8px 14px; color: #e2e8f0; font-size: 13px; transition: all 0.15s ease; outline: none; }
+        .input:focus { border-color: rgba(59, 130, 246, 0.5); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+        .input::placeholder { color: #475569; }
+
+        /* ── Tables ── */
+        .data-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+        .data-table thead th { position: sticky; top: 0; z-index: 10; background: #0f1419; padding: 10px 14px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; border-bottom: 1px solid rgba(51, 65, 85, 0.5); text-align: left; }
+        .data-table tbody tr { transition: background 0.1s ease; }
+        .data-table tbody tr:hover { background: rgba(30, 41, 59, 0.3); }
+        .data-table tbody td { padding: 10px 14px; font-size: 13px; color: #cbd5e1; border-bottom: 1px solid rgba(30, 41, 59, 0.5); }
+
+        /* ── Flash messages ── */
+        .flash-error   { background: rgba(244, 63, 94, 0.1); border: 1px solid rgba(244, 63, 94, 0.2); color: #fb7185; }
+        .flash-warning { background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); color: #fbbf24; }
+        .flash-success { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); color: #34d399; }
+
+        /* ── Keyframes (must be in raw CSS, not Tailwind config, for custom classes) ── */
+        @keyframes slideUp {
+            0% { opacity: 0; transform: translateY(12px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeIn {
+            0% { opacity: 0; }
+            100% { opacity: 1; }
+        }
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        @keyframes pulseDot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* ── Animations ── */
+        .animate-card { opacity: 0; animation: slideUp 0.4s ease-out forwards; }
+        .animate-card:nth-child(1) { animation-delay: 0ms; }
+        .animate-card:nth-child(2) { animation-delay: 50ms; }
+        .animate-card:nth-child(3) { animation-delay: 100ms; }
+        .animate-card:nth-child(4) { animation-delay: 150ms; }
+        .animate-card:nth-child(5) { animation-delay: 200ms; }
+        .animate-card:nth-child(6) { animation-delay: 250ms; }
+        .animate-card:nth-child(7) { animation-delay: 300ms; }
+        .animate-card:nth-child(8) { animation-delay: 350ms; }
+        .animate-card:nth-child(9) { animation-delay: 400ms; }
+        .animate-card:nth-child(10) { animation-delay: 450ms; }
+        .animate-card:nth-child(n+11) { animation-delay: 500ms; }
+
+        /* ── Scrollbar ── */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(51, 65, 85, 0.5); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(71, 85, 105, 0.6); }
+
+        /* ── Misc ── */
+        .text-gradient { background: linear-gradient(135deg, #3b82f6, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .glow-blue { box-shadow: 0 0 20px rgba(59, 130, 246, 0.15); }
     </style>
 </head>
-<body class="text-slate-200 min-h-screen flex">
+<body class="text-slate-300 min-h-screen flex antialiased">
 
     <!-- Sidebar -->
-    <aside class="w-60 flex-shrink-0 bg-slate-900 border-r border-slate-700 flex flex-col h-screen sticky top-0">
+    <aside id="sidebar" class="sidebar flex-shrink-0 bg-surface-100 border-r border-slate-800/60 flex flex-col h-screen sticky top-0">
         <!-- Logo -->
-        <div class="px-5 py-5 border-b border-slate-700">
-            <a href="/" class="block">
-                <img src="/static/logos/sperton-logo.png" alt="Sperton" class="h-8 brightness-0 invert opacity-90 hover:opacity-100 transition-opacity">
+        <div class="px-5 py-5 border-b border-slate-800/60">
+            <a href="/" class="sidebar-logo-full flex items-center gap-3">
+                <img src="/static/logos/sperton-logo.png" alt="Sperton" class="h-7 brightness-0 invert opacity-90">
+                <div>
+                    <div class="sidebar-label text-slate-200 text-sm font-semibold tracking-tight">Sperton</div>
+                    <div class="sidebar-subtitle text-[10px] text-slate-600 font-medium uppercase tracking-widest">Sales Platform</div>
+                </div>
             </a>
-            <div class="text-slate-500 text-xs mt-1">Recruitment Outreach</div>
+            <div class="sidebar-logo-icon hidden items-center justify-center py-1">
+                <img src="/static/logos/sperton-logo.png" alt="S" class="h-7 brightness-0 invert opacity-80">
+            </div>
         </div>
 
         <!-- Nav -->
-        <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        <nav class="sidebar-nav flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+            <div class="sidebar-section-title px-3 mb-2 text-[10px] font-semibold text-slate-600 uppercase tracking-widest">Outreach</div>
+
             <a href="/" class="sidebar-link {% if request.path == '/' %}active{% endif %}">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
-                Dashboard
+                <svg class="w-[18px] h-[18px] flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z"/></svg>
+                <span class="sidebar-label">Dashboard</span>
             </a>
             <a href="/postings" class="sidebar-link {% if '/postings' in request.path %}active{% endif %}">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                Job Postings
+                <svg class="w-[18px] h-[18px] flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 00.75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 00-3.413-.387m4.5 8.006c-.194.165-.42.295-.673.38A23.978 23.978 0 0112 15.75c-2.648 0-5.195-.429-7.577-1.22a2.016 2.016 0 01-.673-.38m0 0A2.18 2.18 0 013 12.489V8.706c0-1.081.768-2.015 1.837-2.175a48.111 48.111 0 013.413-.387m7.5 0V5.25A2.25 2.25 0 0013.5 3h-3a2.25 2.25 0 00-2.25 2.25v.894m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
+                <span class="sidebar-label">Job Postings</span>
             </a>
             <a href="/prospects" class="sidebar-link {% if '/prospects' in request.path %}active{% endif %}">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                Prospects
-            </a>
-            <a href="/campaigns" class="sidebar-link {% if '/campaigns' in request.path %}active{% endif %}">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-                Campaigns
-            </a>
-            <a href="/settings" class="sidebar-link {% if '/settings' in request.path %}active{% endif %}">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                Settings
+                <svg class="w-[18px] h-[18px] flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></svg>
+                <span class="sidebar-label">Prospects</span>
             </a>
 
-            <!-- ERA Group Section -->
-            <div class="mt-6 pt-6 border-t border-slate-700">
-                <div class="px-4 mb-3 flex items-center gap-2">
-                    <img src="/static/logos/era-group-logo.jpg" alt="ERA Group" class="h-7 rounded">
-                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">ERA Group</span>
-                </div>
-                <a href="/era/" class="sidebar-link {% if '/era' in request.path and '/era/extractions' not in request.path and '/era/templates' not in request.path %}active{% endif %}">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
-                    Analytics
-                </a>
-                <a href="/era/extractions" class="sidebar-link {% if '/era/extractions' in request.path %}active{% endif %}">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                    Extractions
-                </a>
-                <a href="/era/templates" class="sidebar-link {% if '/era/templates' in request.path %}active{% endif %}">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
-                    Templates
-                </a>
-            </div>
+            <a href="/crm" class="sidebar-link {% if '/crm' in request.path %}active{% endif %}">
+                <svg class="w-[18px] h-[18px] flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 4.5h14.25M3 9h9.75M3 13.5h9.75m4.5-4.5v12m0 0l-3.75-3.75M17.25 21l3.75-3.75"/></svg>
+                <span class="sidebar-label">Pipeline</span>
+            </a>
+
+            <div class="sidebar-section-title px-3 mt-5 mb-2 text-[10px] font-semibold text-slate-600 uppercase tracking-widest">Channels</div>
+
+            <a href="/campaigns" class="sidebar-link {% if '/campaigns' in request.path and '/campaigns/linkedin' not in request.path and '/campaigns/ab-tests' not in request.path %}active{% endif %}">
+                <svg class="w-[18px] h-[18px] flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"/></svg>
+                <span class="sidebar-label">Email Campaigns</span>
+            </a>
+            <a href="/campaigns/linkedin" class="sidebar-link {% if '/campaigns/linkedin' in request.path %}active{% endif %}">
+                <svg class="w-[18px] h-[18px] flex-shrink-0 text-sky-400" fill="currentColor" viewBox="0 0 24 24"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg>
+                <span class="sidebar-label">LinkedIn</span>
+            </a>
+            <a href="/campaigns/ab-tests" class="sidebar-link {% if '/campaigns/ab-tests' in request.path %}active{% endif %}">
+                <svg class="w-[18px] h-[18px] flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                <span class="sidebar-label">A/B Tests</span>
+            </a>
+
+            <div class="sidebar-section-title px-3 mt-5 mb-2 text-[10px] font-semibold text-slate-600 uppercase tracking-widest">System</div>
+
+            <a href="/settings" class="sidebar-link {% if '/settings' in request.path %}active{% endif %}">
+                <svg class="w-[18px] h-[18px] flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                <span class="sidebar-label">Settings</span>
+            </a>
         </nav>
 
-        <!-- Footer -->
-        <div class="px-4 py-3 border-t border-slate-700 text-xs text-slate-500">
-            Sperton &bull; ERA Group &copy; 2025
+        <!-- Collapse toggle + footer -->
+        <div class="border-t border-slate-800/60">
+            <button onclick="toggleSidebar()" class="w-full flex items-center gap-3 px-5 py-3 text-slate-600 hover:text-slate-400 transition-colors">
+                <svg id="collapse-icon" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M18.75 19.5l-7.5-7.5 7.5-7.5m-6 15L5.25 12l7.5-7.5"/></svg>
+                <span class="sidebar-footer-text text-xs">Collapse</span>
+            </button>
         </div>
     </aside>
 
@@ -92,12 +267,19 @@
         <!-- Flash messages -->
         {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
-        <div class="px-6 pt-4 space-y-2">
+        <div class="px-8 pt-5 space-y-2">
             {% for category, message in messages %}
-            <div class="flex items-center gap-2 px-4 py-3 rounded-lg text-sm
-                {% if category == 'error' %}bg-red-900 border border-red-700 text-red-200
-                {% elif category == 'warning' %}bg-yellow-900 border border-yellow-700 text-yellow-200
-                {% else %}bg-green-900 border border-green-700 text-green-200{% endif %}">
+            <div class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm
+                {% if category == 'error' %}flash-error
+                {% elif category == 'warning' %}flash-warning
+                {% else %}flash-success{% endif %}">
+                {% if category == 'error' %}
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>
+                {% elif category == 'warning' %}
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+                {% else %}
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                {% endif %}
                 {{ message }}
             </div>
             {% endfor %}
@@ -106,10 +288,59 @@
         {% endwith %}
 
         <!-- Page content -->
-        <div class="px-6 py-6">
+        <div class="px-8 py-7">
             {% block content %}{% endblock %}
         </div>
     </main>
 
+    <script>
+    // Sidebar collapse
+    function toggleSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        const icon = document.getElementById('collapse-icon');
+        sidebar.classList.toggle('collapsed');
+        icon.style.transform = sidebar.classList.contains('collapsed') ? 'rotate(180deg)' : '';
+        localStorage.setItem('sidebar-collapsed', sidebar.classList.contains('collapsed'));
+    }
+    // Restore state
+    if (localStorage.getItem('sidebar-collapsed') === 'true') {
+        const sidebar = document.getElementById('sidebar');
+        const icon = document.getElementById('collapse-icon');
+        sidebar.classList.add('collapsed');
+        icon.style.transform = 'rotate(180deg)';
+    }
+
+    // Number count-up animation
+    function countUp(el, target, duration = 800) {
+        const start = 0;
+        const startTime = performance.now();
+        function step(currentTime) {
+            const elapsed = currentTime - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            const eased = 1 - Math.pow(1 - progress, 3);
+            el.textContent = Math.floor(eased * target).toLocaleString();
+            if (progress < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+    }
+    // Auto-trigger count-up on elements with data-count
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('[data-count]').forEach(el => {
+            const target = parseInt(el.dataset.count);
+            if (!isNaN(target)) countUp(el, target);
+        });
+    });
+
+    // Auto-dismiss flash messages after 6 seconds
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('main [class*="flash-"]').forEach(el => {
+            setTimeout(() => {
+                el.style.transition = 'opacity 0.4s ease';
+                el.style.opacity = '0';
+                setTimeout(() => el.remove(), 400);
+            }, 6000);
+        });
+    });
+    </script>
 </body>
 </html>

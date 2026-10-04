@@ -9,7 +9,7 @@ import threading
 import time
 
 import schedule
-from flask import Flask
+from flask import Flask, render_template
 
 from src.database import db
 from src.config import settings
@@ -48,6 +48,14 @@ def create_app() -> Flask:
 
     # Exempt webhook from CSRF (if CSRF is ever added)
     # webhooks_bp routes accept raw POST from Resend
+
+    @app.errorhandler(404)
+    def not_found(_e):
+        return render_template("404.html"), 404
+
+    @app.errorhandler(500)
+    def server_error(_e):
+        return render_template("500.html"), 500
 
     return app
 

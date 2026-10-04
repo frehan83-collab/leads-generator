@@ -2,104 +2,170 @@
 {% block title %}Settings{% endblock %}
 
 {% block content %}
-<div class="mb-6">
-    <h1 class="text-2xl font-bold text-white">Settings</h1>
-    <p class="text-slate-400 text-sm mt-1">Configure the pipeline, manage API accounts, and run manually</p>
+<!-- Header -->
+<div class="mb-6 animate-card">
+    <h1 class="text-2xl font-bold text-white tracking-tight">Settings</h1>
+    <p class="text-slate-500 text-sm mt-1">Configure the pipeline, manage API integrations, and run manually</p>
 </div>
 
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-    <!-- Left: config + run -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+    <!-- Left column -->
     <div class="lg:col-span-2 space-y-5">
 
         <!-- Run Pipeline -->
-        <div class="card">
-            <h2 class="text-sm font-semibold text-slate-200 mb-3">Run Pipeline</h2>
-            <p class="text-sm text-slate-400 mb-4">
-                Manually trigger a full pipeline run: scrape finn.no &rarr; find emails &rarr; draft campaigns &rarr; export CSV.
-                The pipeline also runs automatically every day at <strong class="text-slate-200">{{ run_time }}</strong>.
-            </p>
+        <div class="card animate-card" style="animation-delay: 50ms">
+            <div class="flex items-center gap-3 mb-3">
+                <div class="w-8 h-8 rounded-lg bg-blue-500/15 flex items-center justify-center flex-shrink-0">
+                    <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"/></svg>
+                </div>
+                <div>
+                    <h2 class="text-sm font-semibold text-slate-200">Run Pipeline</h2>
+                    <p class="text-[11px] text-slate-600">Scrape &rarr; Enrich &rarr; Draft &rarr; Export. Auto-runs daily at <span class="font-mono text-slate-400">{{ run_time }}</span></p>
+                </div>
+            </div>
             {% if pipeline_running %}
-            <div class="flex items-center gap-3 px-4 py-3 bg-blue-900 border border-blue-700 rounded-lg text-blue-200 text-sm mb-3">
-                <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                Pipeline is currently running...
+            <div class="flex items-center gap-2.5 px-4 py-2.5 bg-blue-500/8 border border-blue-500/20 rounded-xl text-blue-300 text-xs mb-3">
+                <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                Pipeline is running...
             </div>
             {% endif %}
             <form method="post" action="/settings/run-pipeline">
                 <button type="submit" {% if pipeline_running %}disabled{% endif %}
-                    class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm font-semibold text-white transition-colors">
+                    class="btn-primary flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"/></svg>
                     {% if pipeline_running %}Running...{% else %}Run Pipeline Now{% endif %}
                 </button>
             </form>
         </div>
 
-        <!-- Keywords -->
-        <div class="card">
-            <div class="flex items-center justify-between mb-3">
-                <h2 class="text-sm font-semibold text-slate-200">Keywords</h2>
-                <span class="text-xs text-slate-500">{{ keywords | length }} active</span>
+        <!-- Send Approved -->
+        <div class="card animate-card" style="animation-delay: 100ms">
+            <div class="flex items-center gap-3 mb-3">
+                <div class="w-8 h-8 rounded-lg bg-emerald-500/15 flex items-center justify-center flex-shrink-0">
+                    <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"/></svg>
+                </div>
+                <div>
+                    <h2 class="text-sm font-semibold text-slate-200">Send Approved Drafts</h2>
+                    <p class="text-[11px] text-slate-600">Push to Snov.io campaign. Auto-sends daily at <span class="font-mono text-slate-400">{{ send_time }}</span></p>
+                </div>
             </div>
-            <p class="text-xs text-slate-500 mb-4">These keywords are searched across all job boards. Add or remove keywords below.</p>
+            {% if sending_running %}
+            <div class="flex items-center gap-2.5 px-4 py-2.5 bg-emerald-500/8 border border-emerald-500/20 rounded-xl text-emerald-300 text-xs mb-3">
+                <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                Sending approved drafts...
+            </div>
+            {% endif %}
+            <form method="post" action="/settings/send-now">
+                <button type="submit" {% if sending_running %}disabled{% endif %}
+                    class="btn-success flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"/></svg>
+                    {% if sending_running %}Sending...{% else %}Send Approved Now{% endif %}
+                </button>
+            </form>
+        </div>
 
-            <!-- Current keywords with remove buttons -->
+        <!-- Send Emails Directly (Resend) -->
+        {% if resend_configured %}
+        <div class="card animate-card" style="animation-delay: 150ms">
+            <div class="flex items-center gap-3 mb-3">
+                <div class="w-8 h-8 rounded-lg bg-violet-500/15 flex items-center justify-center flex-shrink-0">
+                    <svg class="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"/></svg>
+                </div>
+                <div>
+                    <h2 class="text-sm font-semibold text-slate-200">Send Emails Directly</h2>
+                    <p class="text-[11px] text-slate-600">Send via Resend. Your exact approved subject + body delivered to prospects.</p>
+                </div>
+            </div>
+            {% if emailing_running %}
+            <div class="flex items-center gap-2.5 px-4 py-2.5 bg-violet-500/8 border border-violet-500/20 rounded-xl text-violet-300 text-xs mb-3">
+                <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                Sending emails via Resend...
+            </div>
+            {% endif %}
+            <form method="post" action="/settings/send-email-now">
+                <button type="submit" {% if emailing_running %}disabled{% endif %}
+                    class="flex items-center gap-2 px-4 py-2 bg-violet-600/90 hover:bg-violet-600 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"/></svg>
+                    {% if emailing_running %}Sending...{% else %}Send Emails Now{% endif %}
+                </button>
+            </form>
+        </div>
+        {% endif %}
+
+        <!-- Keywords -->
+        <div class="card animate-card" style="animation-delay: 200ms">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z"/><path stroke-linecap="round" stroke-linejoin="round" d="M6 6h.008v.008H6V6z"/></svg>
+                    </div>
+                    <h2 class="text-sm font-semibold text-slate-200">Keywords</h2>
+                </div>
+                <span class="text-[11px] text-slate-600 font-mono">{{ keywords | length }} active</span>
+            </div>
+            <p class="text-[11px] text-slate-600 mb-4">Searched across all job boards. Add or remove keywords below.</p>
+
+            <!-- Tags -->
             <div class="flex flex-wrap gap-2 mb-4">
                 {% for kw in keywords %}
-                <span class="group inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 bg-slate-700 rounded-full text-sm text-slate-300">
+                <span class="group inline-flex items-center gap-1.5 pl-3 pr-1 py-1 bg-surface-300/60 ring-1 ring-slate-700/40 rounded-lg text-xs text-slate-300 font-medium">
                     {{ kw.keyword }}
                     <form method="post" action="/settings/keywords/remove/{{ kw.id }}" class="inline">
                         <button type="submit" title="Remove '{{ kw.keyword }}'"
-                            class="w-5 h-5 flex items-center justify-center rounded-full text-slate-500 hover:text-red-400 hover:bg-slate-600 transition-colors">
-                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                            class="w-5 h-5 flex items-center justify-center rounded-md text-slate-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                         </button>
                     </form>
                 </span>
                 {% else %}
-                <span class="text-sm text-slate-500 italic">No keywords configured</span>
+                <span class="text-xs text-slate-600 italic">No keywords configured</span>
                 {% endfor %}
             </div>
 
-            <!-- Add keyword form -->
+            <!-- Add -->
             <form method="post" action="/settings/keywords/add" class="flex gap-2">
-                <input type="text" name="keyword" placeholder="Add keyword (or comma-separated list)..."
-                    class="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
-                <button type="submit"
-                    class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium text-white transition-colors flex items-center gap-1.5">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                <input type="text" name="keyword" placeholder="Add keyword (or comma-separated)..." class="input flex-1">
+                <button type="submit" class="btn-primary flex items-center gap-1.5 !text-xs">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
                     Add
                 </button>
             </form>
         </div>
 
         <!-- Recent Runs -->
-        <div class="card overflow-hidden p-0">
-            <div class="px-5 py-4 border-b border-slate-700">
+        <div class="card !p-0 overflow-hidden animate-card" style="animation-delay: 250ms">
+            <div class="px-5 py-4 border-b border-slate-800/40 flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-slate-700/40 flex items-center justify-center flex-shrink-0">
+                    <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                </div>
                 <h2 class="text-sm font-semibold text-slate-200">Recent Pipeline Runs</h2>
             </div>
             <div class="overflow-x-auto">
-                <table class="w-full text-sm">
+                <table class="data-table">
                     <thead>
-                        <tr class="bg-slate-900 text-slate-400 text-xs">
-                            <th class="px-4 py-2.5 text-left font-medium">Started</th>
-                            <th class="px-4 py-2.5 text-left font-medium">Status</th>
-                            <th class="px-4 py-2.5 text-right font-medium">Postings</th>
-                            <th class="px-4 py-2.5 text-right font-medium">Emails</th>
-                            <th class="px-4 py-2.5 text-right font-medium">Drafts</th>
-                            <th class="px-4 py-2.5 text-right font-medium">Errors</th>
+                        <tr>
+                            <th>Started</th>
+                            <th>Status</th>
+                            <th class="text-right">Postings</th>
+                            <th class="text-right">Emails</th>
+                            <th class="text-right">Drafts</th>
+                            <th class="text-right">Errors</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-700">
+                    <tbody>
                         {% for run in recent_runs %}
                         <tr>
-                            <td class="px-4 py-3 text-slate-300">{{ (run.started_at or '')[:16] | replace('T', ' ') }}</td>
-                            <td class="px-4 py-3">
-                                <span class="text-xs px-2 py-0.5 rounded-full font-medium badge-{{ run.status }}">{{ run.status }}</span>
+                            <td><span class="font-mono text-[11px]">{{ (run.started_at or '')[:16] | replace('T', ' ') }}</span></td>
+                            <td><span class="badge badge-{{ run.status }}">{{ run.status }}</span></td>
+                            <td class="text-right"><span class="font-mono text-[12px]">{{ run.postings_scraped }}</span></td>
+                            <td class="text-right"><span class="font-mono text-[12px]">{{ run.emails_found }}</span></td>
+                            <td class="text-right"><span class="font-mono text-[12px]">{{ run.drafts_created }}</span></td>
+                            <td class="text-right">
+                                <span class="font-mono text-[12px] {% if run.errors > 0 %}text-rose-400{% else %}text-slate-700{% endif %}">{{ run.errors }}</span>
                             </td>
-                            <td class="px-4 py-3 text-right text-slate-400">{{ run.postings_scraped }}</td>
-                            <td class="px-4 py-3 text-right text-slate-400">{{ run.emails_found }}</td>
-                            <td class="px-4 py-3 text-right text-slate-400">{{ run.drafts_created }}</td>
-                            <td class="px-4 py-3 text-right {% if run.errors > 0 %}text-red-400{% else %}text-slate-600{% endif %}">{{ run.errors }}</td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="6" class="px-4 py-6 text-center text-slate-500">No runs yet</td></tr>
+                        <tr><td colspan="6" class="!text-center !py-8 text-slate-600 text-xs">No runs yet</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -107,77 +173,123 @@
         </div>
     </div>
 
-    <!-- Right: Snov balance + info -->
+    <!-- Right column -->
     <div class="space-y-5">
-        <!-- Snov.io Balance -->
-        <div class="card">
-            <h2 class="text-sm font-semibold text-slate-200 mb-3">Snov.io Account</h2>
+
+        <!-- Snov.io Account -->
+        <div class="card animate-card" style="animation-delay: 100ms">
+            <div class="flex items-center gap-3 mb-3">
+                <div class="w-8 h-8 rounded-lg bg-sky-500/15 flex items-center justify-center flex-shrink-0">
+                    <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z"/></svg>
+                </div>
+                <h2 class="text-sm font-semibold text-slate-200">Snov.io Account</h2>
+            </div>
             {% if snov_balance %}
-            <div class="space-y-2 text-sm">
-                <div class="flex justify-between">
+            <div class="space-y-2.5">
+                <div class="flex justify-between text-xs py-1">
                     <span class="text-slate-500">Credits</span>
-                    <span class="text-slate-200 font-medium">{{ snov_balance.credits }}</span>
+                    <span class="text-slate-200 font-mono font-semibold">{{ snov_balance.credits }}</span>
                 </div>
-                <div class="flex justify-between">
+                <div class="flex justify-between text-xs py-1">
                     <span class="text-slate-500">Recipients used</span>
-                    <span class="text-slate-200">{{ snov_balance.recipients_used }}</span>
+                    <span class="text-slate-300 font-mono">{{ snov_balance.recipients_used }}</span>
                 </div>
-                <div class="flex justify-between">
-                    <span class="text-slate-500">Limit resets in</span>
-                    <span class="text-slate-200">{{ snov_balance.limit_resets_in }} days</span>
+                <div class="flex justify-between text-xs py-1">
+                    <span class="text-slate-500">Resets in</span>
+                    <span class="text-slate-300 font-mono">{{ snov_balance.limit_resets_in }} days</span>
                 </div>
-                <div class="flex justify-between">
-                    <span class="text-slate-500">Subscription expires</span>
-                    <span class="text-slate-200">{{ snov_balance.expires_in }} days</span>
+                <div class="flex justify-between text-xs py-1">
+                    <span class="text-slate-500">Expires</span>
+                    <span class="text-slate-300 font-mono">{{ snov_balance.expires_in }} days</span>
                 </div>
             </div>
             {% else %}
-            <p class="text-sm text-slate-500">Could not fetch Snov.io balance. Check your API credentials in <code class="bg-slate-700 px-1 rounded">.env</code>.</p>
+            <p class="text-xs text-slate-600">Could not fetch Snov.io balance. Check API credentials in <code class="bg-surface-300 px-1.5 py-0.5 rounded text-slate-400 text-[11px]">.env</code>.</p>
             {% endif %}
         </div>
 
-        <!-- Config info -->
-        <div class="card">
-            <h2 class="text-sm font-semibold text-slate-200 mb-3">Configuration</h2>
-            <div class="space-y-2 text-xs">
-                <div class="flex justify-between">
-                    <span class="text-slate-500">Daily run time</span>
-                    <span class="text-slate-300 font-mono">{{ run_time }}</span>
+        <!-- Config -->
+        <div class="card animate-card" style="animation-delay: 150ms">
+            <div class="flex items-center gap-3 mb-3">
+                <div class="w-8 h-8 rounded-lg bg-slate-700/40 flex items-center justify-center flex-shrink-0">
+                    <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11.42 15.17l-5.648-3.018a2.269 2.269 0 01-1.022-1.73V6.728m.872 13.149l5.648-3.018m0 0l5.648 3.018m-5.648-3.018V3.75m5.648 12.402a2.269 2.269 0 001.022-1.73V6.728m-5.648 12.402L12 12.75"/></svg>
                 </div>
-                <div class="flex justify-between">
-                    <span class="text-slate-500">Snov list ID</span>
-                    <span class="text-slate-300 font-mono">{{ snov_list_id or '—' }}</span>
+                <h2 class="text-sm font-semibold text-slate-200">Configuration</h2>
+            </div>
+            <div class="space-y-2">
+                <div class="flex justify-between text-xs py-1">
+                    <span class="text-slate-600">Pipeline time</span>
+                    <span class="text-slate-400 font-mono">{{ run_time }}</span>
                 </div>
-                <div class="flex justify-between">
-                    <span class="text-slate-500">Config file</span>
-                    <span class="text-slate-300 font-mono">.env</span>
+                <div class="flex justify-between text-xs py-1">
+                    <span class="text-slate-600">Send time</span>
+                    <span class="text-slate-400 font-mono">{{ send_time }}</span>
+                </div>
+                <div class="flex justify-between text-xs py-1">
+                    <span class="text-slate-600">Snov list</span>
+                    <span class="text-slate-400 font-mono text-[11px]">{{ snov_list_id or '—' }}</span>
+                </div>
+                <div class="flex justify-between text-xs py-1">
+                    <span class="text-slate-600">Resend</span>
+                    {% if resend_configured %}
+                    <span class="badge badge-valid">Active</span>
+                    {% else %}
+                    <span class="badge badge-pending">Not configured</span>
+                    {% endif %}
+                </div>
+                <div class="flex justify-between text-xs py-1">
+                    <span class="text-slate-600">Config</span>
+                    <span class="text-slate-500 font-mono text-[11px]">.env</span>
                 </div>
             </div>
         </div>
 
-        <!-- Exports -->
-        <div class="card">
-            <h2 class="text-sm font-semibold text-slate-200 mb-3">Manual Export</h2>
-            <p class="text-xs text-slate-500 mb-3">Export all data to CSV. Files are also auto-exported after each pipeline run.</p>
+        <!-- Export -->
+        <div class="card animate-card" style="animation-delay: 200ms">
+            <div class="flex items-center gap-3 mb-3">
+                <div class="w-8 h-8 rounded-lg bg-slate-700/40 flex items-center justify-center flex-shrink-0">
+                    <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                </div>
+                <h2 class="text-sm font-semibold text-slate-200">Manual Export</h2>
+            </div>
+            <p class="text-[11px] text-slate-600 mb-4">Export all data. Also auto-exported after each pipeline run.</p>
+
             <div class="space-y-3">
                 <div>
-                    <div class="text-xs text-slate-500 mb-1.5 font-medium">Prospects</div>
-                    <div class="flex gap-2">
-                        <a href="/prospects/export/csv" class="flex-1 text-center px-2 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-medium text-slate-300 transition-colors">CSV</a>
-                        <a href="/prospects/export/xlsx" class="flex-1 text-center px-2 py-1.5 bg-green-800 hover:bg-green-700 rounded-lg text-xs font-medium text-green-100 transition-colors">Excel</a>
-                        <a href="/prospects/export/pdf" class="flex-1 text-center px-2 py-1.5 bg-red-800 hover:bg-red-700 rounded-lg text-xs font-medium text-red-100 transition-colors">PDF</a>
+                    <div class="text-[10px] text-slate-600 font-semibold uppercase tracking-wider mb-1.5">Prospects</div>
+                    <div class="flex gap-1.5">
+                        <a href="/prospects/export/csv" class="btn-secondary flex-1 text-center !text-[11px] !py-1.5">CSV</a>
+                        <a href="/prospects/export/xlsx" class="flex-1 text-center py-1.5 bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-400 rounded-xl text-[11px] font-semibold transition-all ring-1 ring-emerald-500/20">Excel</a>
+                        <a href="/prospects/export/pdf" class="flex-1 text-center py-1.5 bg-rose-600/15 hover:bg-rose-600/25 text-rose-400 rounded-xl text-[11px] font-semibold transition-all ring-1 ring-rose-500/20">PDF</a>
                     </div>
                 </div>
                 <div>
-                    <div class="text-xs text-slate-500 mb-1.5 font-medium">Job Postings</div>
-                    <div class="flex gap-2">
-                        <a href="/postings/export/csv" class="flex-1 text-center px-2 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-medium text-slate-300 transition-colors">CSV</a>
-                        <a href="/postings/export/xlsx" class="flex-1 text-center px-2 py-1.5 bg-green-800 hover:bg-green-700 rounded-lg text-xs font-medium text-green-100 transition-colors">Excel</a>
-                        <a href="/postings/export/pdf" class="flex-1 text-center px-2 py-1.5 bg-red-800 hover:bg-red-700 rounded-lg text-xs font-medium text-red-100 transition-colors">PDF</a>
+                    <div class="text-[10px] text-slate-600 font-semibold uppercase tracking-wider mb-1.5">Job Postings</div>
+                    <div class="flex gap-1.5">
+                        <a href="/postings/export/csv" class="btn-secondary flex-1 text-center !text-[11px] !py-1.5">CSV</a>
+                        <a href="/postings/export/xlsx" class="flex-1 text-center py-1.5 bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-400 rounded-xl text-[11px] font-semibold transition-all ring-1 ring-emerald-500/20">Excel</a>
+                        <a href="/postings/export/pdf" class="flex-1 text-center py-1.5 bg-rose-600/15 hover:bg-rose-600/25 text-rose-400 rounded-xl text-[11px] font-semibold transition-all ring-1 ring-rose-500/20">PDF</a>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+<script>
+// Live-poll background job status; reload once a running job finishes.
+(function() {
+    const jobs = [
+        { url: '/settings/pipeline-status', was: {{ 'true' if pipeline_running else 'false' }} },
+        { url: '/settings/send-status', was: {{ 'true' if sending_running else 'false' }} }
+    ];
+    if (!jobs.some(j => j.was)) return;
+    const timer = setInterval(async () => {
+        try {
+            const states = await Promise.all(jobs.map(j => fetch(j.url).then(r => r.json())));
+            if (!states.some(s => s.running)) { clearInterval(timer); location.reload(); }
+        } catch (e) { /* keep polling quietly */ }
+    }, 5000);
+})();
+</script>
 {% endblock %}

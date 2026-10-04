@@ -42,18 +42,17 @@ def send_email_direct(draft_id: int) -> dict:
     api_key = settings.resend_api_key
     from_email = settings.from_email
 
-    if not api_key:
-        return {"success": False, "error": "RESEND_API_KEY not configured"}
-
     draft = db.get_email_draft_by_id(draft_id)
     if not draft:
         return {"success": False, "error": "Draft not found"}
 
     if draft["status"] != "approved":
         return {"success": False, "error": f"Draft status is '{draft['status']}', expected 'approved'"}
-
     if draft.get("sent_at"):
         return {"success": False, "error": "Draft already sent (double-send guard)"}
+
+    if not api_key:
+        return {"success": False, "error": "RESEND_API_KEY not configured"}
 
     resend.api_key = api_key
 

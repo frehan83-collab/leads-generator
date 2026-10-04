@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Page not found{% endblock %}
+
+{% block content %}
+<div class="max-w-lg mx-auto text-center py-16 animate-card">
+    <div class="font-mono text-6xl font-bold text-gradient mb-4">404</div>
+    <h1 class="text-xl font-semibold text-slate-200 mb-2">This page doesn't exist</h1>
+    <p class="text-sm text-slate-500 mb-8">The link may be outdated, or you may have typed the address wrong.</p>
+    <div class="flex gap-3 justify-center">
+        <a href="/" class="btn-primary">Back to Dashboard</a>
+        <a href="/settings" class="btn-secondary">Settings</a>
+    </div>
+</div>
+{% endblock %}
