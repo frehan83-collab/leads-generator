@@ -344,34 +344,42 @@ class BRREGClient:
 
         decision_makers = []
         for role in roles:
-            role_code = role.get("rolle", {}).get("kode", "")
+            # BRREG shape varies: the code lives in type.kode
+            # (rolle.kode is often null). Same for the description.
+            type_info = role.get("type", {}) or {}
+            rolle_info = role.get("rolle", {}) or {}
+            role_code = rolle_info.get("kode", "") or type_info.get("kode", "")
             if role_code not in target_roles:
                 continue
 
-            person = role.get("person", {})
+            person = role.get("person", {}) or {}
             if not person or not person.get("navn"):
                 continue
 
             name_parts = person.get("navn", {})
-            full_name = " ".join(
-                filter(
-                    None,
-                    [
-                        name_parts.get("fornavn", ""),
-                        name_parts.get("mellomnavn", ""),
-                        name_parts.get("etternavn", ""),
-                    ],
+            if isinstance(name_parts, str):
+                full_name = name_parts.strip()
+            else:
+                full_name = " ".join(
+                    filter(
+                        None,
+                        [
+                            name_parts.get("fornavn", ""),
+                            name_parts.get("mellomnavn", ""),
+                            name_parts.get("etternavn", ""),
+                        ],
+                    )
                 )
-            )
 
             if full_name:
+                role_desc = rolle_info.get("beskrivelse", "") or type_info.get(
+                    "beskrivelse", ""
+                )
                 decision_makers.append(
                     {
                         "name": full_name,
                         "role_code": role_code,
-                        "role_description": role.get("rolle", {}).get(
-                            "beskrivelse", ""
-                        ),
+                        "role_description": role_desc,
                         "birth_date": person.get("fodselsdato", ""),
                     }
                 )

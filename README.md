@@ -43,7 +43,7 @@ python main.py --host 0.0.0.0 --port 8080
 | Variable | Default | Purpose |
 |---|---|---|
 | `FINN_KEYWORDS` | `seafood,aquaculture,sjømat` | comma-separated search keywords |
-| `RUN_TIME` / `SEND_TIME` | `09:30` / `08:30` UTC | daily pipeline / send-job times |
+| `RUN_TIME` / `SEND_TIME` | `09:30` / `08:30` | daily times in **server-local time** (validated `HH:MM`) |
 | `PIPELINE_WORKERS` | `2` | parallel posting workers, capped at 4 |
 | `DOMAIN_TIMEOUT_SEC` | `300` | max seconds per company domain |
 | `CAREERS_MAX_DOMAINS` | `30` | known domains revisited per run by the careers source |
@@ -77,7 +77,7 @@ Central defaults and validation live in `src/config.py`.
 ## Testing
 
 ```bash
-pytest tests/ -v                        # full suite (195 tests)
+pytest tests/ -v                        # full suite (201 tests)
 pytest tests/test_hardening.py -v       # security/safety regression tests
 pytest tests/test_pipeline_run.py -v    # mocked end-to-end pipeline runs
 ruff check src tests                    # lint (enforced in CI)

@@ -145,21 +145,54 @@ def score_company(
 # ------------------------------------------------------------------
 
 
-def _company_row(domain: str, org_number: str | None) -> dict | None:
+def _company_row(
+    domain: str,
+    org_number: str | None,
+    company_name: str | None = None,
+    _names_cache: list[tuple[str, str]] | None = None,
+) -> dict | None:
+    """Find the BRREG row: exact org → normalized website → fuzzy name."""
     from src.database import db
 
+    domain = (domain or "").lower()
     with db.get_connection() as conn:
-        row = None
         if org_number:
             row = conn.execute(
                 "SELECT * FROM companies WHERE org_number = ?", (org_number,)
             ).fetchone()
-        if row is None:
-            row = conn.execute(
-                "SELECT * FROM companies WHERE website = ? OR website = ?",
-                (domain, f"https://{domain}"),
-            ).fetchone()
-        return dict(row) if row else None
+            if row:
+                return dict(row)
+        row = conn.execute(
+            """SELECT * FROM companies
+               WHERE LOWER(website) IN (?, ?) LIMIT 1""",
+            (domain, f"www.{domain}"),
+        ).fetchone()
+        if row:
+            return dict(row)
+    # Fallback: fuzzy name match (posting names carry AS/ASA suffixes etc.)
+    if company_name:
+        from rapidfuzz import fuzz, process
+
+        if _names_cache is None:
+            with db.get_connection() as conn:
+                _names_cache = [
+                    (r[0], r[1])
+                    for r in conn.execute(
+                        "SELECT name, org_number FROM companies"
+                    ).fetchall()
+                ]
+        names = [n for n, _ in _names_cache]
+        match = process.extractOne(
+            company_name, names, scorer=fuzz.token_sort_ratio, score_cutoff=85
+        )
+        if match:
+            org = dict(zip(names, [o for _, o in _names_cache], strict=True))[match[0]]
+            with db.get_connection() as conn:
+                row = conn.execute(
+                    "SELECT * FROM companies WHERE org_number = ?", (org,)
+                ).fetchone()
+                return dict(row) if row else None
+    return None
 
 
 def _engagement_events(domain: str) -> dict:
@@ -171,7 +204,7 @@ def _engagement_events(domain: str) -> dict:
             """SELECT ee.event_type, COUNT(*) FROM email_events ee
                JOIN email_drafts ed ON ee.draft_id = ed.id
                JOIN prospects p ON ed.prospect_id = p.id
-               WHERE p.company_domain = ?
+               WHERE LOWER(p.company_domain) = ?
                GROUP BY ee.event_type""",
             (domain,),
         ).fetchall()
@@ -179,7 +212,7 @@ def _engagement_events(domain: str) -> dict:
         stage_rows = conn.execute(
             """SELECT ps.stage, COUNT(*) FROM prospect_stages ps
                JOIN prospects p ON ps.prospect_id = p.id
-               WHERE p.company_domain = ?
+               WHERE LOWER(p.company_domain) = ?
                GROUP BY ps.stage""",
             (domain,),
         ).fetchall()
@@ -200,7 +233,8 @@ def _days_since_last_posting(domain: str) -> int | None:
 
     with db.get_connection() as conn:
         row = conn.execute(
-            """SELECT MAX(scraped_at) FROM job_postings WHERE company_domain = ?""",
+            """SELECT MAX(scraped_at) FROM job_postings
+               WHERE LOWER(company_domain) = ?""",
             (domain,),
         ).fetchone()
     if not row or not row[0]:
@@ -213,11 +247,14 @@ def _days_since_last_posting(domain: str) -> int | None:
         return None
 
 
-def score_domain(domain: str, org_number: str | None = None) -> dict:
+def score_domain(
+    domain: str, org_number: str | None = None, company_name: str | None = None
+) -> dict:
     """Score one company domain end-to-end and persist to lead_scores."""
     from src.database import db
 
-    company = _company_row(domain, org_number)
+    domain = (domain or "").lower()
+    company = _company_row(domain, org_number, company_name)
     intent = db.get_company_intent_signals(domain)
     days = _days_since_last_posting(domain)
     events = _engagement_events(domain)
@@ -237,18 +274,20 @@ def score_all_domains() -> dict:
 
     with db.get_connection() as conn:
         domains = [
-            r[0]
+            (r[0], r[1], r[2])
             for r in conn.execute(
-                "SELECT DISTINCT company_domain FROM job_postings "
-                "WHERE company_domain IS NOT NULL"
+                """SELECT company_domain, MAX(org_number), MAX(company_name)
+                   FROM job_postings
+                   WHERE company_domain IS NOT NULL
+                   GROUP BY LOWER(company_domain)"""
             ).fetchall()
         ]
     stats = {"scored": 0, "hot": 0, "warm": 0}
-    for domain in domains:
+    for domain, org_number, company_name in domains:
         if not domain:
             continue
         try:
-            result = score_domain(domain)
+            result = score_domain(domain, org_number, company_name)
             stats["scored"] += 1
             if result["level"] == "hot":
                 stats["hot"] += 1
@@ -278,7 +317,7 @@ def calibration_report() -> list[dict]:
                    SUM(CASE WHEN ps.stage = 'Won' THEN 1 ELSE 0 END) AS won,
                    SUM(CASE WHEN ps.stage = 'Lost' THEN 1 ELSE 0 END) AS lost
                FROM lead_scores ls
-               JOIN prospects p ON p.company_domain = ls.domain
+               JOIN prospects p ON LOWER(p.company_domain) = LOWER(ls.domain)
                LEFT JOIN prospect_stages ps ON ps.prospect_id = p.id
                    AND ps.stage IN ('Won', 'Lost')
                GROUP BY band"""

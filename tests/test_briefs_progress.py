@@ -1,5 +1,7 @@
 """Meeting briefs, A/B winner logic, run-progress endpoint, job state."""
 
+import pytest
+
 import src.database.db as db_module
 
 
@@ -211,3 +213,48 @@ def test_run_progress_marks_stale_run(tmp_path, monkeypatch):
         )
     body = _client(monkeypatch).get("/api/run-progress").get_json()
     assert body["latest_run"]["status"] == "stale"
+
+
+# --- ops hygiene -----------------------------------------------------------------
+
+
+def test_mark_stale_runs(tmp_path, monkeypatch):
+    monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "t.db")
+    db_module.init_db()
+    old = db_module.insert_pipeline_run({})
+    with db_module.get_connection() as conn:
+        conn.execute(
+            "UPDATE pipeline_runs SET started_at = ? WHERE id = ?",
+            ("2020-01-01T00:00:00", old),
+        )
+    current = db_module.insert_pipeline_run({})
+    marked = db_module.mark_stale_runs(except_id=current)
+    assert marked == 1
+    runs = {r["id"]: r["status"] for r in db_module.get_recent_pipeline_runs(5)}
+    assert runs[old] == "stale"
+    assert runs[current] == "running"
+
+
+def test_mark_stale_runs_keeps_fresh(tmp_path, monkeypatch):
+    monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "t.db")
+    db_module.init_db()
+    db_module.insert_pipeline_run({})
+    assert db_module.mark_stale_runs() == 0
+    assert db_module.get_recent_pipeline_runs(1)[0]["status"] == "running"
+
+
+def test_validate_time():
+    from src.config import Settings
+
+    assert Settings.validate_time("09:30", "RUN_TIME") == "09:30"
+    for bad in ("9:30", "0930", "25:00", "09:60", "", "nope"):
+        with pytest.raises(ValueError):
+            Settings.validate_time(bad, "RUN_TIME")
+
+
+def test_list_recent_exports_empty(tmp_path, monkeypatch):
+    import src.export.csv_exporter as csv_exporter
+
+    monkeypatch.setattr(csv_exporter, "_ensure_exports_dir", lambda: tmp_path / "empty")
+    (tmp_path / "empty").mkdir()
+    assert csv_exporter.list_recent_exports() == []

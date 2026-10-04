@@ -93,8 +93,13 @@ def create_app() -> Flask:
 
 def _run_scheduler(run_time: str) -> None:
     """Background thread: runs the pipeline and send job on daily schedules."""
+    import time as _time
+
+    from src.config import Settings
     from src.pipeline.lead_pipeline import LeadPipeline
 
+    run_time = Settings.validate_time(run_time, "RUN_TIME")
+    send_time = Settings.validate_time(os.getenv("SEND_TIME", "08:30"), "SEND_TIME")
     keywords = settings.finn_keywords
     snov_list_id = settings.snov_list_id
 
@@ -125,14 +130,16 @@ def _run_scheduler(run_time: str) -> None:
         except Exception as exc:
             logger.error("Follow-up check failed: %s", exc, exc_info=True)
 
-    send_time = os.getenv("SEND_TIME", "08:30")
+    send_time = Settings.validate_time(os.getenv("SEND_TIME", "08:30"), "SEND_TIME")
 
     schedule.every().day.at(run_time).do(_pipeline_job)
     schedule.every().day.at(send_time).do(_send_job)
     logger.info(
-        "Background scheduler started — pipeline at %s, send job at %s",
+        "Background scheduler started — pipeline at %s, send job at %s "
+        "(server-local time, TZ=%s)",
         run_time,
         send_time,
+        _time.tzname,
     )
 
     while True:

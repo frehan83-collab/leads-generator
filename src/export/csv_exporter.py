@@ -88,6 +88,29 @@ def _ts() -> str:
 # ------------------------------------------------------------------
 
 
+def list_recent_exports(limit: int = 8) -> list[dict]:
+    """Newest files in the exports dir (name, size, modified). Never raises."""
+    try:
+        out_dir = _ensure_exports_dir()
+        files = sorted(
+            (p for p in out_dir.iterdir() if p.is_file()),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        return [
+            {
+                "name": p.name,
+                "size_kb": round(p.stat().st_size / 1024, 1),
+                "modified": datetime.fromtimestamp(p.stat().st_mtime).strftime(
+                    "%Y-%m-%d %H:%M"
+                ),
+            }
+            for p in files[:limit]
+        ]
+    except Exception:
+        return []
+
+
 def export_prospects_csv(filename: str = None) -> str | None:
     """Export all prospects to CSV file. Returns path or None."""
     try:

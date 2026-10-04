@@ -116,3 +116,16 @@ production-grade for unattended multi-user operation.
   “collecting data” state instead of premature winners)
 - [x] `PIPELINE_WORKERS` default 1→2, hard-capped at 4
 - [x] 10 new tests; suite 185 → 195 green; ruff clean; runtime-verified live
+
+### World-class batch 3 — ops polish + BRREG backfill
+- [x] Stale-run auto-mark on pipeline start (`mark_stale_runs`, T/space-safe)
+- [x] Scheduler time correctness: `HH:MM` validation fail-fast + server-local
+  timezone logged (docs corrected — `schedule` is local-time, not UTC)
+- [x] BRREG backfill: 200 aquaculture companies + fixed `extract_decision_makers`
+  (role code lives in `type.kode`, not `rolle.kode`; string-`navn` shape);
+  788 decision-makers stored; `--backfill-roles` mode added
+- [x] Scoring match overhaul: org → normalized website → fuzzy name fallback,
+  case-insensitive domain identity everywhere; fit now lands on real data
+  (AquaGen 40/40)
+- [x] Recent-exports listing on settings page
+- [x] 6 new tests; suite 195 → 201 green; ruff clean

@@ -17,6 +17,74 @@ from src.logger import setup_logging
 logger = logging.getLogger(__name__)
 
 
+def _fetch_and_store_roles(client, company_id, org_number, stats) -> int:
+    """Fetch board/CEO roles for one org and store decision makers."""
+    stored = 0
+    try:
+        roles = client.get_company_roles(org_number)
+        decision_makers = client.extract_decision_makers(roles)
+
+        for dm in decision_makers:
+            role_data = {
+                "company_id": company_id,
+                "org_number": org_number,
+                "person_name": dm["name"],
+                "role_code": dm["role_code"],
+                "role_description": dm["role_description"],
+                "birth_date": dm["birth_date"],
+            }
+            role_id = db.insert_company_role(role_data)
+            if role_id:
+                stored += 1
+
+        if decision_makers:
+            logger.info(
+                "  + %d decision makers: %s",
+                len(decision_makers),
+                ", ".join(f"{dm['name']} ({dm['role_code']})" for dm in decision_makers[:3]),
+            )
+            stats["roles_fetched"] += len(decision_makers)
+            stats["roles_new"] += stored
+
+    except Exception as exc:
+        logger.error("Error fetching roles for %s: %s", org_number, exc)
+        stats["errors"] += 1
+    return stored
+
+
+def backfill_roles(limit: int = 10000) -> dict:
+    """Fetch roles for companies that have none stored yet."""
+    from src.database import db as _db
+
+    client = BRREGClient()
+    _db.init_db()
+    stats = {"companies_checked": 0, "companies_backfilled": 0, "roles_new": 0, "errors": 0}
+    with _db.get_connection() as conn:
+        rows = conn.execute(
+            """SELECT c.id, c.org_number FROM companies c
+               LEFT JOIN company_roles r ON r.org_number = c.org_number
+               WHERE r.org_number IS NULL
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
+    logger.info("Backfilling roles for %d companies without roles", len(rows))
+    for company_id, org_number in rows:
+        stats["companies_checked"] += 1
+        stored = _fetch_and_store_roles(
+            client, company_id, org_number,
+            {"roles_fetched": 0, "roles_new": 0, "errors": 0},
+        )
+        stats["roles_new"] += stored
+        if stored:
+            stats["companies_backfilled"] += 1
+    client.close()
+    logger.info(
+        "Backfill complete: %d checked, %d backfilled, %d roles stored",
+        stats["companies_checked"], stats["companies_backfilled"], stats["roles_new"],
+    )
+    return stats
+
+
 def import_companies(nace_codes: list[str], max_results: int = 10000, fetch_roles: bool = True):
     """
     Import companies from BRREG into database.
@@ -74,34 +142,7 @@ def import_companies(nace_codes: list[str], max_results: int = 10000, fetch_role
 
             # Fetch and store roles (board members, CEO, etc.)
             if fetch_roles:
-                try:
-                    roles = client.get_company_roles(org_number)
-                    decision_makers = client.extract_decision_makers(roles)
-
-                    for dm in decision_makers:
-                        role_data = {
-                            "company_id": company_id,
-                            "org_number": org_number,
-                            "person_name": dm["name"],
-                            "role_code": dm["role_code"],
-                            "role_description": dm["role_description"],
-                            "birth_date": dm["birth_date"],
-                        }
-                        role_id = db.insert_company_role(role_data)
-                        if role_id:
-                            stats["roles_new"] += 1
-
-                    if decision_makers:
-                        logger.info(
-                            "  + %d decision makers: %s",
-                            len(decision_makers),
-                            ", ".join(f"{dm['name']} ({dm['role_code']})" for dm in decision_makers[:3]),
-                        )
-                        stats["roles_fetched"] += len(decision_makers)
-
-                except Exception as exc:
-                    logger.error("Error fetching roles for %s: %s", org_number, exc)
-                    stats["errors"] += 1
+                _fetch_and_store_roles(client, company_id, org_number, stats)
 
         # Progress update every 50 companies
         if stats["companies_fetched"] % 50 == 0:
@@ -159,6 +200,11 @@ def main():
         help="Skip fetching board members/roles (faster)",
     )
     parser.add_argument(
+        "--backfill-roles",
+        action="store_true",
+        help="Only fetch roles for companies that have none stored yet",
+    )
+    parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -168,7 +214,9 @@ def main():
 
     setup_logging(args.log_level)
 
-    # Determine which NACE codes to import
+    if args.backfill_roles:
+        backfill_roles(limit=args.limit)
+        return
     nace_codes = []
     if args.all:
         nace_codes = ["03.2", "03.1", "10.2", "46.38"]

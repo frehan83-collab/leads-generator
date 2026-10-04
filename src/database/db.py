@@ -728,7 +728,7 @@ def get_prospects_for_export() -> list[dict]:
                 ls.level as lead_level
             FROM prospects p
             LEFT JOIN job_postings jp ON p.job_posting_id = jp.id
-            LEFT JOIN lead_scores ls ON ls.domain = p.company_domain
+            LEFT JOIN lead_scores ls ON LOWER(ls.domain) = LOWER(p.company_domain)
             ORDER BY p.created_at DESC
         """).fetchall()
     return [dict(r) for r in rows]
@@ -916,6 +916,29 @@ def get_recent_pipeline_runs(limit: int = 10) -> list[dict]:
             "SELECT * FROM pipeline_runs ORDER BY started_at DESC LIMIT ?", (limit,)
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def mark_stale_runs(except_id: int | None = None, older_than_hours: int = 12) -> int:
+    """Mark 'running' runs older than the cutoff as 'stale'.
+
+    A run that never finished means its process died. Returns rows marked.
+    started_at is stored as naive UTC ISO (with 'T'); normalize for SQLite.
+    """
+    with get_connection() as conn:
+        cur = conn.execute(
+            """UPDATE pipeline_runs
+               SET status = 'stale', finished_at = ?
+               WHERE status = 'running'
+                 AND (? IS NULL OR id != ?)
+                 AND replace(started_at, 'T', ' ') < datetime('now', ?)""",
+            (
+                _now(),
+                except_id,
+                except_id,
+                f"-{int(older_than_hours)} hours",
+            ),
+        )
+        return cur.rowcount
 
 
 def get_pipeline_run_trends(days: int = 30) -> list[dict]:
@@ -1637,7 +1660,7 @@ def get_hot_prospects_v2(limit: int = 10) -> list[dict]:
             """SELECT p.*, ls.score, ls.level, ls.components_json,
                       jp.title as job_title, jp.company_domain
                FROM prospects p
-               JOIN lead_scores ls ON ls.domain = p.company_domain
+               JOIN lead_scores ls ON LOWER(ls.domain) = LOWER(p.company_domain)
                LEFT JOIN job_postings jp ON p.job_posting_id = jp.id
                ORDER BY ls.score DESC, p.created_at DESC
                LIMIT ?""",
@@ -1985,25 +2008,29 @@ def auto_move_prospect_stage(prospect_id: int, event_type: str) -> None:
 
 
 def get_company_intent_signals(domain: str) -> dict:
-    """Calculate hiring intent signals for a company domain."""
+    """Calculate hiring intent signals for a company domain.
+
+    Matches case-insensitively: posting domains are stored as scraped.
+    """
+    domain = (domain or "").lower()
     with get_connection() as conn:
         # Count total job postings
         total = conn.execute(
-            "SELECT COUNT(*) FROM job_postings WHERE company_domain = ?",
+            "SELECT COUNT(*) FROM job_postings WHERE LOWER(company_domain) = ?",
             (domain,),
         ).fetchone()[0]
 
         # Recent postings (last 30 days)
         recent = conn.execute(
             """SELECT COUNT(*) FROM job_postings
-               WHERE company_domain = ? AND scraped_at >= date('now', '-30 days')""",
+               WHERE LOWER(company_domain) = ? AND scraped_at >= date('now', '-30 days')""",
             (domain,),
         ).fetchone()[0]
 
         # Unique keywords
         keywords = conn.execute(
             """SELECT DISTINCT keyword_matched FROM job_postings
-               WHERE company_domain = ? AND keyword_matched IS NOT NULL""",
+               WHERE LOWER(company_domain) = ? AND keyword_matched IS NOT NULL""",
             (domain,),
         ).fetchall()
 

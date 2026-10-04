@@ -52,6 +52,10 @@ def settings():
     send_time = os.getenv("SEND_TIME", "08:30")
     resend_configured = bool(os.getenv("RESEND_API_KEY"))
 
+    from src.export.csv_exporter import list_recent_exports
+
+    recent_exports = list_recent_exports()
+
     return render_template(
         "settings.html",
         keywords=keywords,
@@ -60,6 +64,7 @@ def settings():
         snov_list_id=snov_list_id,
         snov_balance=snov_balance,
         recent_runs=recent_runs,
+        recent_exports=recent_exports,
         pipeline_running=snapshot()["pipeline"],
         sending_running=snapshot()["sending"],
         resend_configured=resend_configured,

@@ -56,9 +56,15 @@ def run_send_job() -> None:
 
 
 def start_scheduler(run_time: str = "09:30") -> None:
-    send_time = os.getenv("SEND_TIME", "08:30")
+    from src.config import Settings
+
+    run_time = Settings.validate_time(run_time, "RUN_TIME")
+    send_time = Settings.validate_time(os.getenv("SEND_TIME", "08:30"), "SEND_TIME")
     logger.info(
-        "Scheduler started. Pipeline at %s, send job at %s", run_time, send_time
+        "Scheduler started. Pipeline at %s, send job at %s (server-local time, TZ=%s)",
+        run_time,
+        send_time,
+        time.tzname,
     )
     schedule.every().day.at(run_time).do(run_pipeline)
     schedule.every().day.at(send_time).do(run_send_job)

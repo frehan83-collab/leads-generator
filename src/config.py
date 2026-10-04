@@ -92,6 +92,26 @@ class Settings:
         )
         return secrets.token_hex(32)
 
+    @staticmethod
+    def validate_time(value: str, name: str) -> str:
+        """Validate an HH:MM daily time. Raises ValueError with guidance.
+
+        NOTE: the `schedule` library triggers in server-local time, not UTC.
+        Set the server timezone (or the value) accordingly.
+        """
+        import re as _re
+
+        if not _re.fullmatch(r"\d{2}:\d{2}", value or ""):
+            raise ValueError(
+                f"{name}={value!r} is invalid — use 24h HH:MM (server-local time)."
+            )
+        hour, minute = int(value[:2]), int(value[3:])
+        if hour > 23 or minute > 59:
+            raise ValueError(
+                f"{name}={value!r} is invalid — use 24h HH:MM (server-local time)."
+            )
+        return value
+
     def validate(self, strict: bool = False) -> list[str]:
         """Return a list of configuration problems (empty = OK).
 

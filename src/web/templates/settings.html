@@ -272,6 +272,19 @@
                     </div>
                 </div>
             </div>
+            {% if recent_exports %}
+            <div class="mt-4 pt-3 border-t border-slate-800/40">
+                <div class="text-[10px] text-slate-600 font-semibold uppercase tracking-wider mb-2">Recent files</div>
+                <div class="space-y-1">
+                    {% for f in recent_exports %}
+                    <div class="flex justify-between text-[11px] py-0.5">
+                        <span class="text-slate-400 font-mono truncate">{{ f.name }}</span>
+                        <span class="text-slate-600 font-mono flex-shrink-0 ml-2">{{ f.size_kb }} KB · {{ f.modified }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>

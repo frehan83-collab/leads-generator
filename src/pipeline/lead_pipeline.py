@@ -93,6 +93,11 @@ class LeadPipeline:
         # Track this pipeline run
         self._run_id = db.insert_pipeline_run()
 
+        # Hygiene: previous runs stuck in 'running' died with their process.
+        stale = db.mark_stale_runs(except_id=self._run_id)
+        if stale:
+            logger.info("Marked %d stale pipeline run(s) from dead processes", stale)
+
         try:
             # Ensure we have a Snov list to add prospects to
             if not self.snov_list_id:
