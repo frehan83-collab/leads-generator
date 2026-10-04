@@ -1,94 +1,106 @@
-# Leads Generator
+# Sperton Sales Platform — Autonomous B2B Lead Engine
 
-Automated lead generation tool for Sperton recruiting.
-Crawls finn.no daily, enriches prospects via Snov.io, and adds them to outreach campaigns.
+Automated recruitment sales and prospecting for Sperton Rekruttering.
+Scrapes Norwegian job boards, enriches companies and contacts, drafts
+personalized outreach, and manages multichannel follow-up — supervised by
+humans, driven by a daily autonomous pipeline.
 
-## Quick Start
+## What it does
 
-### 1. Install Python
-Download from https://www.python.org/downloads/ — tick "Add Python to PATH" during install.
+| Stage | How |
+|---|---|
+| **Discover** | Playwright scrapers for Finn.no, NAV, Karrierestart, Jobbnorge (incremental, deduped) |
+| **Enrich** | BRREG company data (org number, employees, NACE) + website contact extraction |
+| **Prospect** | Snov.io domain prospects, email finder, verification (valid/invalid/risky) |
+| **Draft** | Template + Claude Haiku AI-personalized openers with A/B variants |
+| **Outreach** | Snov.io campaigns + direct Resend sends + LinkedIn copy-ready messages |
+| **Follow-up** | 3-step sequences on no-open, smart send-time scheduling (Tue–Thu 09:00–11:00 CET) |
+| **Track** | Resend webhooks (opens/clicks/bounces), 7-stage CRM kanban, intent scoring 0–100 |
 
-### 2. Run Setup
-Double-click `setup.bat` or run in terminal:
-```
-setup.bat
-```
+## Quick start
 
-### 3. Configure .env
-Open `.env` and fill in your Snov.io client secret:
-```
-SNOV_CLIENT_SECRET=your_secret_here
-SNOV_LIST_ID=your_snov_list_id  (optional, auto-created if blank)
-```
-
-### 4. Run
-
-| Command | What it does |
-|---------|-------------|
-| `python main.py --now` | Run pipeline immediately (test) |
-| `python main.py --status` | Show DB stats + Snov balance |
-| `python main.py` | Start scheduler (runs daily at 09:30) |
-
-### 5. Run Tests
-```
-pytest tests/ -v
+```bash
+pip install -r requirements.txt
+python -m playwright install chromium   # scraper browser (once)
+cp .env.example .env                    # then fill in API keys
+python main.py --status                 # verifies setup, auto-creates DB
+python main.py                          # dashboard at http://127.0.0.1:5000
 ```
 
-## Project Structure
+## Commands
 
-```
-leads_generator/
-├── main.py                    # Entry point
-├── .env                       # Config (never commit this)
-├── requirements.txt
-├── setup.bat                  # Windows setup script
-├── src/
-│   ├── scraper/
-│   │   └── finn_scraper.py    # Playwright-based finn.no scraper
-│   ├── snov/
-│   │   └── client.py          # Full Snov.io API client
-│   ├── database/
-│   │   └── db.py              # SQLite database (PostgreSQL-ready)
-│   ├── pipeline/
-│   │   └── lead_pipeline.py   # Orchestrates the full pipeline
-│   ├── scheduler/
-│   │   └── runner.py          # Daily scheduler (09:30)
-│   └── logger.py              # Coloured logging + file rotation
-├── tests/
-│   ├── test_scraper.py
-│   ├── test_database.py
-│   └── test_snov_client.py
-└── logs/                      # Auto-created log files
+```bash
+python main.py                      # web dashboard + daily scheduler (default)
+python main.py --now                 # one pipeline run now, then exit
+python main.py --now --sources finn  # specific source(s): finn nav karrierestart jobbnorge
+python main.py --status              # DB stats + Snov.io balance
+python main.py --cli                 # terminal scheduler, no web UI
+python main.py --host 0.0.0.0 --port 8080
 ```
 
-## Pipeline Flow
+## Configuration (`.env` — see `.env.example`)
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `FINN_KEYWORDS` | `seafood,aquaculture,sjømat` | comma-separated search keywords |
+| `RUN_TIME` / `SEND_TIME` | `09:30` / `08:30` UTC | daily pipeline / send-job times |
+| `SNOV_CLIENT_ID` / `SNOV_CLIENT_SECRET` | — | enrichment (required for prospects) |
+| `SNOV_LIST_ID` | auto-created | Snov campaign list |
+| `RESEND_API_KEY` | — | direct email sending |
+| `FROM_EMAIL` / `FROM_NAME` | `fredrik.hansen@sperton.com` | sender identity |
+| `FOLLOWUP_AUTO_SEND` | `false` | `true` = follow-ups pre-approved AND auto-sent; `false` (safe) = drafts await review |
+| `FOLLOWUP_MIN_DAYS` / `FOLLOWUP_MAX_STEP` | `3` / `3` | follow-up timing and depth |
+| `ANTHROPIC_API_KEY` | — | AI openers (falls back to templates) |
+| `FLASK_SECRET` | ephemeral + warning | set a real value in production |
+| `LOG_LEVEL` | `INFO` | logging verbosity |
+
+Central defaults and validation live in `src/config.py`.
+
+## Safety rails (on by default)
+
+- Follow-ups are created as **drafts awaiting approval** unless `FOLLOWUP_AUTO_SEND=true`.
+- `send_email_direct` refuses drafts that aren't `approved` **and** refuses already-sent drafts (double-send guard).
+- All secrets come from the environment — no committed fallbacks.
+
+## Testing
+
+```bash
+pytest tests/ -v                        # full suite (123 tests)
+pytest tests/test_hardening.py -v       # security/safety regression tests
+pytest tests/test_database.py -v        # schema, migrations, queries
+```
+
+`pytest.ini` scopes collection to `tests/` (root `test_*.py` helpers are manual live-API scripts, not CI tests).
+
+## Project layout
 
 ```
-finn.no scrape (keywords)
-    ↓
-New job postings → saved to DB
-    ↓
-Resolve company domain (Snov.io)
-    ↓
-Find prospects by domain + job title (Snov.io)
-    ↓
-Find + verify email (Snov.io)
-    ↓
-Skip if already contacted (DB dedup)
-    ↓
-Save prospect to DB
-    ↓
-Add to Snov.io campaign list → email outreach begins
+main.py                 multi-mode CLI (web / now / status / cli)
+src/
+  config.py             central settings + validation
+  pipeline/             orchestration (scrape → enrich → verify → draft → export)
+  scraper/              finn / nav / karrierestart / jobbnorge + website + browser_manager
+  snov/                 Snov.io client (OAuth2, rate-limited)
+  brreg/                Norwegian Business Register client
+  database/db.py        SQLite schema, migrations, queries
+  emails/               templates, AI drafter, LinkedIn templates, follow-up templates
+  outreach/             Snov sender, Resend sender, follow-ups, smart scheduler
+  export/               CSV / Excel / PDF exporters
+  scheduler/            daily runner
+  web/                  Flask dashboard (routes, templates, webhooks)
+  logger.py             colored console + rotating file logging
+tests/                  pytest suite
 ```
 
-## Keywords (configurable in .env)
-```
-FINN_KEYWORDS=seafood,aquaculture,sjømat,biologi
-```
+## Dashboard routes
 
-## VPS Migration
-When ready to deploy to VPS:
-1. Copy project to VPS
-2. Run `setup.bat` equivalent on Linux
-3. Replace SQLite with PostgreSQL (change `db.py` connection string)
-4. Use `systemd` service instead of Windows Task Scheduler
+`/` dashboard · `/postings` · `/prospects` (+`/profile`) · `/campaigns`
+(+`/ab-tests`, `/linkedin`) · `/crm` kanban · `/settings` (pipeline controls,
+keywords, exports) · `/webhooks/resend` (Resend events endpoint)
+
+## Docs
+
+- `CLAUDE.md` — agent working guide for this repo
+- `ROADMAP.md` — living roadmap: assessment, completed work, highest-value next steps
+- `docs/archive/` — historical docs from the retired ERA track (not this project)
+- `FILES_MANIFEST.txt` — file inventory (may lag; treat code as truth)
