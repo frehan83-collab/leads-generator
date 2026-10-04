@@ -19,6 +19,10 @@ def setup_logging(level: str = "INFO") -> None:
     root = logging.getLogger()
     root.setLevel(getattr(logging, level.upper(), logging.INFO))
 
+    # Idempotent: don't stack duplicate handlers on repeated calls.
+    if any(isinstance(h, colorlog.StreamHandler) for h in root.handlers):
+        return
+
     # Console handler with colours
     console = colorlog.StreamHandler()
     console.setFormatter(
