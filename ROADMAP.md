@@ -148,7 +148,18 @@ production-grade for unattended multi-user operation.
   dropped company filter in prospects pagination
 - [x] Lead quality (`src/scoring/lead_quality.py`): role-inbox detection
   (conservative set — hr/sales/kontakt stay eligible) + identity confidence;
-  hot widget excludes role inboxes; prospects table badges
+  hot widget excludes role inboxes; prospects badges
 - [x] BRREG-website domain fallback (`db.get_company_website`: org → fuzzy
   name) ahead of paid Snov lookup — Mowi-class misses now resolve free
 - [x] 9 new tests; suite 213 → 222 green; ruff clean
+
+### World-class batch 6 — reply detection (close the loop)
+- [x] `src/inbox/`: provider interface + read-only IMAP provider
+  (never flags/moves/deletes; M365 needs Graph — documented)
+- [x] Rule-based NO/EN classifier: human / auto_reply / unsubscribe / angry
+- [x] Processor: thread-aware draft match, human → replied event + CRM move +
+  sequence stop; unsub → suppression; OOF logged without side effects;
+  Message-ID idempotency; webhook notify on human/unsub/angry
+- [x] Follow-up query excludes replied/bounced/suppressed (was open-only)
+- [x] Scheduler (every N min, only if configured) + `main.py --check-inbox`
+- [x] 11 new tests; suite 222 → 233 green; ruff clean

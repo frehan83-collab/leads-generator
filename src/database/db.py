@@ -485,6 +485,12 @@ _SCHEMA = """
             );
             CREATE INDEX IF NOT EXISTS idx_audit_log_created
                 ON audit_log(created_at);
+
+            -- Inbox processor: already-handled reply Message-IDs
+            CREATE TABLE IF NOT EXISTS inbox_processed (
+                message_id  TEXT UNIQUE NOT NULL,
+                processed_at TEXT NOT NULL
+            );
         """
 
 
@@ -1507,6 +1513,9 @@ def get_sent_drafts_needing_followup(
     - sent_at >= min_days ago
     - sequence_step < max_step
     - no 'opened' event exists for this draft
+    - no reply recorded (event or replied_at) — never chase a responder
+    - no bounce recorded for this draft
+    - recipient not suppressed
     """
     with get_connection() as conn:
         rows = conn.execute(
@@ -1523,6 +1532,16 @@ def get_sent_drafts_needing_followup(
                  AND NOT EXISTS (
                      SELECT 1 FROM email_events ee
                      WHERE ee.draft_id = ed.id AND ee.event_type = 'opened'
+                 )
+                 AND NOT EXISTS (
+                     SELECT 1 FROM email_events ee
+                     WHERE ee.draft_id = ed.id
+                       AND ee.event_type IN ('replied', 'bounced')
+                 )
+                 AND ed.replied_at IS NULL
+                 AND NOT EXISTS (
+                     SELECT 1 FROM suppressions s
+                     WHERE LOWER(s.email) = LOWER(p.email)
                  )
                ORDER BY ed.sent_at ASC""",
             (f"-{min_days} days", max_step),
@@ -1735,6 +1754,28 @@ def get_audit_log(limit: int = 100) -> list[dict]:
             (limit,),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+# ------------------------------------------------------------------
+# Inbox processor (reply idempotency)
+# ------------------------------------------------------------------
+
+
+def inbox_already_processed(message_id: str) -> bool:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM inbox_processed WHERE message_id = ?", (message_id,)
+        ).fetchone()
+        return row is not None
+
+
+def mark_inbox_processed(message_id: str) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO inbox_processed (message_id, processed_at)"
+            " VALUES (?, ?)",
+            (message_id, _now()),
+        )
 
 
 def get_domains_for_career_scan(limit: int = 30, since_days: int = 90) -> list[dict]:

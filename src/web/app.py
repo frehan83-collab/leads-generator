@@ -130,10 +130,27 @@ def _run_scheduler(run_time: str) -> None:
         except Exception as exc:
             logger.error("Follow-up check failed: %s", exc, exc_info=True)
 
+    def _inbox_job():
+        logger.info("Scheduled inbox check triggered")
+        try:
+            from src.inbox.processor import check_inbox
+
+            inbox_stats = check_inbox(since_days=settings.inbox_lookback_days)
+            logger.info("Inbox check finished: %s", inbox_stats)
+        except Exception as exc:
+            logger.error("Inbox check failed: %s", exc, exc_info=True)
+
     send_time = Settings.validate_time(os.getenv("SEND_TIME", "08:30"), "SEND_TIME")
 
     schedule.every().day.at(run_time).do(_pipeline_job)
     schedule.every().day.at(send_time).do(_send_job)
+    if settings.inbox_imap_host and settings.inbox_check_minutes > 0:
+        schedule.every(settings.inbox_check_minutes).minutes.do(_inbox_job)
+        logger.info(
+            "Inbox checks every %d minutes (lookback %d days)",
+            settings.inbox_check_minutes,
+            settings.inbox_lookback_days,
+        )
     logger.info(
         "Background scheduler started — pipeline at %s, send job at %s "
         "(server-local time, TZ=%s)",

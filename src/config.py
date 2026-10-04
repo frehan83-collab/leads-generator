@@ -78,6 +78,17 @@ class Settings:
     # -- AI -------------------------------------------------------------
     anthropic_api_key: str | None = os.getenv("ANTHROPIC_API_KEY")
 
+    # -- Inbox reply detection ------------------------------------------
+    # Generic IMAP (Gmail/app-passwords/any IMAP). NOTE: Microsoft 365
+    # retired basic-auth IMAP — that tenant needs the Graph provider.
+    inbox_imap_host: str | None = os.getenv("INBOX_IMAP_HOST")
+    inbox_imap_port: int = int(os.getenv("INBOX_IMAP_PORT", "993"))
+    inbox_imap_user: str | None = os.getenv("INBOX_IMAP_USER")
+    inbox_imap_pass: str | None = os.getenv("INBOX_IMAP_PASS")
+    inbox_imap_folder: str = os.getenv("INBOX_IMAP_FOLDER", "INBOX")
+    inbox_check_minutes: int = int(os.getenv("INBOX_CHECK_MINUTES", "30"))
+    inbox_lookback_days: int = int(os.getenv("INBOX_LOOKBACK_DAYS", "7"))
+
     # -- Web ------------------------------------------------------------
     flask_secret: str | None = os.getenv("FLASK_SECRET")
     log_level: str = os.getenv("LOG_LEVEL", "INFO")

@@ -15,7 +15,16 @@ humans, driven by a daily autonomous pipeline.
 | **Draft** | Template + Claude Haiku AI-personalized openers with A/B variants |
 | **Outreach** | Snov.io campaigns + direct Resend sends + LinkedIn copy-ready messages |
 | **Follow-up** | 3-step sequences on no-open, smart send-time scheduling (Tue–Thu 09:00–11:00 CET) |
-| **Track** | Resend webhooks (opens/clicks/bounces), 7-stage CRM kanban, intent scoring 0–100 |
+| **Track** | Resend webhooks (opens/clicks/bounces), inbox replies (human/auto/unsub), 7-stage CRM kanban, intent scoring 0–100 |
+
+### Reply detection
+
+Resend webhooks never see replies. With `INBOX_IMAP_*` configured, the
+scheduler (and `python main.py --check-inbox`) monitors the sender mailbox:
+human replies set `replied_at`, move the CRM stage, and stop all future
+follow-ups for that prospect; unsubscribes suppress the address (GDPR-safe);
+auto-replies are logged without side effects. Message-IDs are tracked so
+re-runs are idempotent. Mailbox is never modified (read-only).
 
 ## Quick start
 
@@ -62,6 +71,8 @@ python main.py --host 0.0.0.0 --port 8080
 | `LOG_LEVEL` | `INFO` | logging verbosity |
 | `LOG_FORMAT` | `pretty` | `pretty` (colored) or `json` (one object per line, for aggregation) |
 | `LEADS_DB_PATH` | `./leads.db` | override the SQLite file location |
+| `INBOX_IMAP_HOST` / `_USER` / `_PASS` | unset (skipped) | reply detection mailbox |
+| `INBOX_CHECK_MINUTES` | `30` | scheduler inbox checks (`0` = off) |
 
 Central defaults and validation live in `src/config.py`.
 
@@ -81,7 +92,7 @@ Central defaults and validation live in `src/config.py`.
 ## Testing
 
 ```bash
-pytest tests/ -v                        # full suite (222 tests)
+pytest tests/ -v                        # full suite (233 tests)
 pytest tests/test_hardening.py -v       # security/safety regression tests
 pytest tests/test_pipeline_run.py -v    # mocked end-to-end pipeline runs
 ruff check src tests                    # lint (enforced in CI)

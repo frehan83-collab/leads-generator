@@ -58,6 +58,18 @@ def cmd_scheduler():
     start_scheduler(run_time=run_time)
 
 
+def cmd_check_inbox():
+    from src.inbox.processor import check_inbox
+
+    print("\n--- Checking inbox for replies ---")
+    stats = check_inbox()
+    for key, value in stats.items():
+        if key != "errors":
+            print(f"  {key:<15} {value}")
+    for error in stats.get("errors", []):
+        print(f"  error: {error}")
+
+
 def cmd_status():
     from src.database.db import get_connection, init_db
     from src.snov.client import SnovClient
@@ -125,6 +137,9 @@ if __name__ == "__main__":
     )
     parser.add_argument("--now", action="store_true", help="Run pipeline immediately")
     parser.add_argument(
+        "--check-inbox", action="store_true", help="Check mailbox for replies once"
+    )
+    parser.add_argument(
         "--status", action="store_true", help="Show status and account info"
     )
     parser.add_argument(
@@ -143,6 +158,8 @@ if __name__ == "__main__":
 
     if args.status:
         cmd_status()
+    elif args.check_inbox:
+        cmd_check_inbox()
     elif args.now:
         cmd_run_now(sources=args.sources)
     elif args.cli:
