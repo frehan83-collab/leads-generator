@@ -204,7 +204,7 @@
                 </div>
                 <h2 class="text-sm font-semibold text-slate-300">Hot Prospects</h2>
             </div>
-            <a href="/prospects" class="text-blue-400 text-xs hover:text-blue-300 font-medium transition-colors">View all &rarr;</a>
+            <a href="/scores" class="text-blue-400 text-xs hover:text-blue-300 font-medium transition-colors">View all &rarr;</a>
         </div>
         {% if hot_prospects %}
         <div class="space-y-1">
@@ -218,10 +218,11 @@
                     <div class="text-[11px] text-slate-600 truncate">{{ hp.company_name or hp.company_domain }}</div>
                 </div>
                 <div class="flex items-center gap-1 flex-shrink-0">
-                    {% set score = hp.intent_score or 0 %}
-                    {% if score >= 70 %}
+                    {% set score = hp.score if hp.score is defined and hp.score is not none else (hp.intent_score or 0) %}
+                    {% set level = hp.level if hp.level is defined and hp.level else '' %}
+                    {% if score >= 70 or level == 'hot' %}
                     <span class="text-[10px] font-bold text-orange-400 bg-orange-500/10 px-1.5 py-0.5 rounded">🔥 {{ score }}</span>
-                    {% elif score >= 40 %}
+                    {% elif score >= 40 or level in ('warm', 'medium') %}
                     <span class="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">🌡 {{ score }}</span>
                     {% else %}
                     <span class="text-[10px] font-bold text-slate-500 bg-slate-500/10 px-1.5 py-0.5 rounded">{{ score }}</span>

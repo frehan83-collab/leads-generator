@@ -23,8 +23,25 @@ def index():
     # F4: LinkedIn stats
     linkedin_stats = db.get_linkedin_stats()
 
-    # C3: Hot prospects (companies with high intent signals)
-    hot_prospects = db.get_hot_prospects(5)
+    # C3: Hot prospects — v2 scores first, v1 intent as fallback
+    hot_prospects = db.get_hot_prospects_v2(5)
+    if not hot_prospects:
+        hot_prospects = [
+            {
+                **p,
+                "score": p.get("intent_score") or 0,
+                "level": (
+                    "hot"
+                    if (p.get("intent_score") or 0) >= 70
+                    else "warm"
+                    if (p.get("intent_score") or 0) >= 45
+                    else "medium"
+                    if (p.get("intent_score") or 0) >= 20
+                    else "cold"
+                ),
+            }
+            for p in db.get_hot_prospects(5)
+        ]
 
     # C2: Pipeline counts
     pipeline_counts = db.get_pipeline_counts()
@@ -43,3 +60,21 @@ def index():
         hot_prospects=hot_prospects,
         pipeline_counts=pipeline_counts,
     )
+
+
+@dashboard_bp.route("/scores")
+def scores():
+    """Lead scoring v2 leaderboard + calibration bands."""
+    import json
+
+    from src.scoring.lead_scorer import calibration_report
+
+    rows = db.get_lead_scores(100)
+    for row in rows:
+        try:
+            row["components"] = json.loads(row.get("components_json") or "{}").get(
+                "components", {}
+            )
+        except (ValueError, TypeError):
+            row["components"] = {}
+    return render_template("scores.html", scores=rows, calibration=calibration_report())

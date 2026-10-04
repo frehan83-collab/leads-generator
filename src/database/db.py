@@ -723,9 +723,12 @@ def get_prospects_for_export() -> list[dict]:
                      WHERE ed.prospect_id = p.id
                      ORDER BY ed.created_at DESC LIMIT 1),
                     'no_draft'
-                ) as outreach_status
+                ) as outreach_status,
+                ls.score as lead_score,
+                ls.level as lead_level
             FROM prospects p
             LEFT JOIN job_postings jp ON p.job_posting_id = jp.id
+            LEFT JOIN lead_scores ls ON ls.domain = p.company_domain
             ORDER BY p.created_at DESC
         """).fetchall()
     return [dict(r) for r in rows]
@@ -1610,6 +1613,35 @@ def get_lead_scores(limit: int = 100, min_score: int = 0) -> list[dict]:
                FROM lead_scores WHERE score >= ?
                ORDER BY score DESC LIMIT ?""",
             (min_score, limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_lead_score(domain: str) -> dict | None:
+    """Single-domain v2 score with components, or None if never scored."""
+    if not domain:
+        return None
+    with get_connection() as conn:
+        row = conn.execute(
+            """SELECT domain, score, level, components_json, computed_at
+               FROM lead_scores WHERE domain = ?""",
+            (domain,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def get_hot_prospects_v2(limit: int = 10) -> list[dict]:
+    """Prospects at the highest-scored companies (v2), hottest first."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT p.*, ls.score, ls.level, ls.components_json,
+                      jp.title as job_title, jp.company_domain
+               FROM prospects p
+               JOIN lead_scores ls ON ls.domain = p.company_domain
+               LEFT JOIN job_postings jp ON p.job_posting_id = jp.id
+               ORDER BY ls.score DESC, p.created_at DESC
+               LIMIT ?""",
+            (limit,),
         ).fetchall()
     return [dict(r) for r in rows]
 

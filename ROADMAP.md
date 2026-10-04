@@ -92,3 +92,14 @@ production-grade for unattended multi-user operation.
 - [ ] Multi-user roles, per-seat Snov budgets — **deferred deliberately**:
   needs session auth + tenant model; current basic-auth + audit log is the
   correct foundation, not a substitute. Build when a second operator exists.
+
+### Beyond the roadmap — product surface + verification
+- [x] Scoring v2 wired in: dashboard hot widget (fixed v1 always-0 score),
+  `/scores` leaderboard + calibration page, profile score card, score/level
+  in CSV/Excel/PDF exports, `--status` top scores
+- [x] Runtime verification: booted production server (waitress), all 11 routes
+  200, `/healthz` against the real DB (75 postings, 128 prospects),
+  `--status` live incl. Snov balance
+- [ ] Production data note: `companies` table is empty (BRREG import never run)
+  — run `import_brreg_companies.py` to unlock full v2 fit scoring; v2 degrades
+  gracefully until then

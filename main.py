@@ -89,6 +89,16 @@ def cmd_status():
     print(f"  Outreach log entries:      {outreach}")
     print(f"  Companies (BRREG):         {companies}")
 
+    from src.database.db import get_lead_scores
+
+    top_scores = get_lead_scores(5)
+    print("\n--- Lead Scores (v2) ---")
+    if top_scores:
+        for row in top_scores:
+            print(f"  {str(row['score']).rjust(3)}  {row['level']:<6} {row['domain']}")
+    else:
+        print("  No scores yet — run the pipeline to generate them.")
+
     print("\n--- Snov.io Account ---")
     try:
         snov = SnovClient()

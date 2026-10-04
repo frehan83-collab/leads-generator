@@ -28,6 +28,8 @@ PROSPECT_COLUMNS = [
     "keyword",
     "email_status",
     "outreach_status",
+    "lead_score",
+    "lead_level",
 ]
 
 PROSPECT_HEADERS = [
@@ -41,6 +43,8 @@ PROSPECT_HEADERS = [
     "Keyword",
     "Email Status",
     "Outreach Status",
+    "Lead Score",
+    "Lead Level",
 ]
 
 POSTING_COLUMNS = [
@@ -377,15 +381,17 @@ def build_prospects_pdf() -> bytes:
     # Column widths in mm (landscape A4 = ~277mm usable)
     col_widths = [
         22 * mm,
+        30 * mm,
+        28 * mm,
+        28 * mm,
         34 * mm,
-        28 * mm,
-        28 * mm,
-        38 * mm,
         26 * mm,
-        42 * mm,
+        34 * mm,
         16 * mm,
         18 * mm,
         20 * mm,
+        12 * mm,
+        14 * mm,
     ]
 
     return _pdf_table(

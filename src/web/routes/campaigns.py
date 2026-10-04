@@ -369,11 +369,14 @@ def prospect_profile(prospect_id):
 
     # Compute intent signals if domain available
     intent = None
+    score = None
     if profile.get("company_domain"):
         intent = db.get_company_intent_signals(profile["company_domain"])
+        score = db.get_lead_score(profile["company_domain"])
 
     return render_template(
         "prospect_profile.html",
         prospect=profile,
         intent=intent,
+        score=score,
     )

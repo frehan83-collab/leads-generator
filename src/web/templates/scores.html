@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Lead Scores{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="mb-6 animate-card">
+    <h1 class="text-2xl font-bold text-white tracking-tight">Lead Scores</h1>
+    <p class="text-slate-500 text-sm mt-1">Fit (40) + Demand (35) + Engagement (25), recomputed every pipeline run</p>
+</div>
+
+<!-- Calibration -->
+<div class="card animate-card mb-5">
+    <h2 class="text-sm font-semibold text-slate-200 mb-1">Calibration — win rate by band</h2>
+    <p class="text-[11px] text-slate-600 mb-4">From actual CRM outcomes (Won / Lost). Bands with no decided deals show — instead of 0.</p>
+    {% if calibration %}
+    <div class="overflow-x-auto">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Band</th>
+                    <th class="text-right">Prospects</th>
+                    <th class="text-right">Won</th>
+                    <th class="text-right">Lost</th>
+                    <th class="text-right">Win rate</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for band in calibration %}
+                <tr>
+                    <td><span class="badge badge-{{ 'sent' if band.band == 'hot' else 'approved' if band.band == 'warm' else 'pending' }}">{{ band.band }}</span></td>
+                    <td class="text-right font-mono">{{ band.prospects }}</td>
+                    <td class="text-right font-mono text-emerald-400">{{ band.won }}</td>
+                    <td class="text-right font-mono text-rose-400">{{ band.lost }}</td>
+                    <td class="text-right font-mono">{% if band.win_rate is not none %}{{ (band.win_rate * 100) | round(1) }}%{% else %}<span class="text-slate-600">—</span>{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-xs text-slate-600">No scored companies yet — run the pipeline to generate scores.</p>
+    {% endif %}
+</div>
+
+<!-- Leaderboard -->
+<div class="card !p-0 overflow-hidden animate-card" style="animation-delay: 80ms">
+    <div class="px-5 py-4 border-b border-slate-800/40 flex items-center justify-between">
+        <h2 class="text-sm font-semibold text-slate-200">Company leaderboard</h2>
+        <span class="text-[11px] text-slate-600 font-mono">{{ scores | length }} scored</span>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Company domain</th>
+                    <th class="text-right">Score</th>
+                    <th>Level</th>
+                    <th style="min-width: 180px">Fit / Demand / Engagement</th>
+                    <th>Scored</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in scores %}
+                <tr>
+                    <td><span class="font-mono text-[12px]">{{ row.domain }}</span></td>
+                    <td class="text-right"><span class="font-mono font-bold text-[13px] {% if row.score >= 70 %}text-orange-400{% elif row.score >= 45 %}text-amber-400{% elif row.score >= 20 %}text-blue-400{% else %}text-slate-500{% endif %}">{{ row.score }}</span></td>
+                    <td><span class="badge badge-{{ 'sent' if row.level == 'hot' else 'approved' if row.level == 'warm' else 'pending' }}">{{ row.level }}</span></td>
+                    <td>
+                        <div class="flex items-center gap-1.5 text-[10px] font-mono text-slate-500">
+                            <span class="w-8">F {{ row.components.fit if row.components.fit is defined else '–' }}</span>
+                            <div class="flex-1 h-1.5 rounded bg-slate-800 overflow-hidden"><div class="h-full bg-sky-500/70 rounded" style="width: {{ ((row.components.fit or 0) / 40 * 100) | round }}%"></div></div>
+                        </div>
+                        <div class="flex items-center gap-1.5 text-[10px] font-mono text-slate-500 mt-1">
+                            <span class="w-8">D {{ row.components.demand if row.components.demand is defined else '–' }}</span>
+                            <div class="flex-1 h-1.5 rounded bg-slate-800 overflow-hidden"><div class="h-full bg-violet-500/70 rounded" style="width: {{ ((row.components.demand or 0) / 35 * 100) | round }}%"></div></div>
+                        </div>
+                        <div class="flex items-center gap-1.5 text-[10px] font-mono text-slate-500 mt-1">
+                            <span class="w-8">E {{ row.components.engagement if row.components.engagement is defined else '–' }}</span>
+                            <div class="flex-1 h-1.5 rounded bg-slate-800 overflow-hidden"><div class="h-full bg-emerald-500/70 rounded" style="width: {{ ((row.components.engagement or 0) / 25 * 100) | round }}%"></div></div>
+                        </div>
+                    </td>
+                    <td><span class="font-mono text-[11px] text-slate-600">{{ (row.computed_at or '')[:16] | replace('T', ' ') }}</span></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="!text-center !py-8 text-slate-600 text-xs">No scores yet — run the pipeline, then come back.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
