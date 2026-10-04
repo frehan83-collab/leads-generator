@@ -1,0 +1,8 @@
+{# Age filter for pruning views. Inside a GET filter form; submits with it.
+   Expects `older_than` in context ("" = all time). #}
+<select name="older_than" class="input" title="Show only records older than…">
+    <option value="" {% if not older_than %}selected{% endif %}>All time</option>
+    <option value="7" {% if older_than == '7' %}selected{% endif %}>Older than 7 days</option>
+    <option value="14" {% if older_than == '14' %}selected{% endif %}>Older than 14 days</option>
+    <option value="30" {% if older_than == '30' %}selected{% endif %}>Older than 30 days</option>
+</select>

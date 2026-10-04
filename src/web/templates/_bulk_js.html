@@ -1,0 +1,52 @@
+{# Generic bulk-selection behavior. Works with .row-cb checkboxes,
+   #action-bar, #selected-count, #select-all (see postings bulk form). #}
+<script>
+function toggleAll(master) {
+    document.querySelectorAll('.row-cb').forEach(cb => { cb.checked = master.checked; });
+    updateSelection();
+}
+
+function updateSelection() {
+    const checked = document.querySelectorAll('.row-cb:checked');
+    const bar = document.getElementById('action-bar');
+    const count = document.getElementById('selected-count');
+    const master = document.getElementById('select-all');
+    const all = document.querySelectorAll('.row-cb');
+
+    if (!bar || !count) return;
+    count.textContent = checked.length + ' selected';
+
+    if (checked.length > 0) {
+        bar.classList.remove('hidden');
+    } else {
+        bar.classList.add('hidden');
+    }
+
+    if (master) {
+        if (checked.length === 0) {
+            master.checked = false;
+            master.indeterminate = false;
+        } else if (checked.length === all.length) {
+            master.checked = true;
+            master.indeterminate = false;
+        } else {
+            master.checked = false;
+            master.indeterminate = true;
+        }
+    }
+}
+
+function clearSelection() {
+    document.querySelectorAll('.row-cb').forEach(cb => { cb.checked = false; });
+    const master = document.getElementById('select-all');
+    if (master) {
+        master.checked = false;
+        master.indeterminate = false;
+    }
+    updateSelection();
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') clearSelection();
+});
+</script>

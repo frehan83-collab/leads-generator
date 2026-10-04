@@ -1,0 +1,12 @@
+{# Standalone age selector (no surrounding form): navigates via URL.
+   Expects `older_than` in context. #}
+<label class="flex items-center gap-2 text-[11px] text-slate-500">
+    Age
+    <select onchange="const u = new URL(window.location); if (this.value) { u.searchParams.set('older_than', this.value); } else { u.searchParams.delete('older_than'); } u.searchParams.set('page', '1'); window.location = u;"
+        class="input !py-1.5 !px-2 !text-[11px]" title="Show only records older than…">
+        <option value="" {% if not older_than %}selected{% endif %}>All time</option>
+        <option value="7" {% if older_than == '7' %}selected{% endif %}>7+ days</option>
+        <option value="14" {% if older_than == '14' %}selected{% endif %}>14+ days</option>
+        <option value="30" {% if older_than == '30' %}selected{% endif %}>30+ days</option>
+    </select>
+</label>

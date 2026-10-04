@@ -180,3 +180,14 @@ production-grade for unattended multi-user operation.
   unanswered, hottest first), draft reviews, hot-&-untouched — all linked
   to briefs/profiles/drafts
 - [x] 5 new tests; suite 242 → 247 green; ruff clean
+
+### World-class batch 9 — pruning (age filters + bulk delete)
+- [x] `older_than` (7/14/30 days) on postings, prospects, campaigns;
+  explicit in URL, preserved across pages
+- [x] Bulk delete everywhere: prospects (full cascade, suppressions survive),
+  drafts (prospects kept); postings cascade now also clears events/LinkedIn/
+  stages (was leaking orphans)
+- [x] Per-row checkboxes + select-all + floating action bar + confirm on all
+  three pages; shared `_bulk_js.html`; fixed prospects company-filter drop
+- [x] Audit hooks on all bulk deletes
+- [x] 8 new tests; suite 247 → 257 green; ruff clean

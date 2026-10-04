@@ -36,11 +36,28 @@
         <option value="unknown" {% if email_status == 'unknown' %}selected{% endif %}>Unknown</option>
         <option value="not_valid" {% if email_status == 'not_valid' %}selected{% endif %}>Not valid</option>
     </select>
+    {% include "_age_filter.html" %}
     <button type="submit" class="btn-primary !text-xs">Filter</button>
-    {% if search or email_status %}
+    {% if search or email_status or older_than %}
     <a href="/prospects" class="btn-secondary !text-xs">Clear</a>
     {% endif %}
 </form>
+
+<!-- Bulk delete form -->
+<form id="bulk-form" method="post" action="/prospects/delete">
+    <!-- Floating action bar -->
+    <div id="action-bar" class="hidden sticky top-0 z-20 mb-3 flex items-center justify-between bg-rose-950/90 border border-rose-800/60 backdrop-blur-md rounded-xl px-5 py-3">
+        <div class="flex items-center gap-3 text-sm">
+            <span id="selected-count" class="font-semibold text-rose-300 text-xs">0 selected</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <button type="button" onclick="clearSelection()" class="btn-secondary !text-xs !py-1.5">Cancel</button>
+            <button type="submit" onclick="return confirm('Delete selected prospects and their drafts? Suppressions are kept. This cannot be undone.')"
+                class="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 rounded-xl text-xs font-semibold text-white transition-all">
+                Delete Selected
+            </button>
+        </div>
+    </div>
 
 <!-- Table -->
 <div class="card !p-0 overflow-hidden animate-card" style="animation-delay: 100ms">
@@ -48,6 +65,10 @@
         <table class="data-table">
             <thead>
                 <tr>
+                    <th class="!px-3 w-10">
+                        <input type="checkbox" id="select-all" onchange="toggleAll(this)"
+                            class="w-4 h-4 rounded bg-slate-700 border-slate-500 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer">
+                    </th>
                     <th>Name</th>
                     <th>Email</th>
                     <th class="hidden md:table-cell">Title</th>
@@ -60,6 +81,10 @@
             <tbody>
                 {% for p in prospects %}
                 <tr class="group">
+                    <td class="!px-3">
+                        <input type="checkbox" name="prospect_ids" value="{{ p.id }}" onchange="updateSelection()"
+                            class="row-cb w-4 h-4 rounded bg-slate-700 border-slate-500 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer">
+                    </td>
                     <td>
                         <div class="flex items-center gap-2.5">
                             <div class="w-7 h-7 rounded-lg bg-slate-700/50 flex items-center justify-center text-[11px] font-bold text-slate-400 flex-shrink-0">
@@ -90,7 +115,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="7" class="!text-center !py-12">
+                    <td colspan="8" class="!text-center !py-12">
                         <div class="w-12 h-12 rounded-2xl bg-slate-800/80 flex items-center justify-center mx-auto mb-3">
                             <svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/></svg>
                         </div>
@@ -102,6 +127,7 @@
         </table>
     </div>
 </div>
+</form>
 
 <!-- Pagination -->
 {% if total_pages > 1 %}
@@ -112,13 +138,13 @@
     </div>
     <div class="flex items-center gap-1.5">
         {% if page > 1 %}
-        <a href="?page={{ page - 1 }}&search={{ search }}&email_status={{ email_status }}&company={{ company }}&per_page={{ per_page }}" class="btn-secondary !py-1.5 !px-3 !text-xs">&larr; Prev</a>
+        <a href="?page={{ page - 1 }}&search={{ search }}&email_status={{ email_status }}&company={{ company }}&per_page={{ per_page }}&older_than={{ older_than }}" class="btn-secondary !py-1.5 !px-3 !text-xs">&larr; Prev</a>
         {% endif %}
         {% for p in range(1, total_pages + 1) %}
             {% if p == page %}
             <span class="w-8 h-8 rounded-lg bg-blue-500/15 text-blue-400 flex items-center justify-center text-xs font-semibold">{{ p }}</span>
             {% elif p <= 3 or p > total_pages - 2 or (p >= page - 1 and p <= page + 1) %}
-            <a href="?page={{ p }}&search={{ search }}&email_status={{ email_status }}&company={{ company }}&per_page={{ per_page }}" class="w-8 h-8 rounded-lg text-slate-500 hover:bg-slate-800/60 hover:text-slate-300 flex items-center justify-center text-xs transition-all">{{ p }}</a>
+            <a href="?page={{ p }}&search={{ search }}&email_status={{ email_status }}&company={{ company }}&per_page={{ per_page }}&older_than={{ older_than }}" class="w-8 h-8 rounded-lg text-slate-500 hover:bg-slate-800/60 hover:text-slate-300 flex items-center justify-center text-xs transition-all">{{ p }}</a>
             {% elif p == 4 and page > 5 %}
             <span class="text-slate-700 text-xs px-1">&hellip;</span>
             {% elif p == total_pages - 2 and page < total_pages - 4 %}
@@ -126,9 +152,10 @@
             {% endif %}
         {% endfor %}
         {% if page < total_pages %}
-        <a href="?page={{ page + 1 }}&search={{ search }}&email_status={{ email_status }}&company={{ company }}&per_page={{ per_page }}" class="btn-secondary !py-1.5 !px-3 !text-xs">Next &rarr;</a>
+        <a href="?page={{ page + 1 }}&search={{ search }}&email_status={{ email_status }}&company={{ company }}&per_page={{ per_page }}&older_than={{ older_than }}" class="btn-secondary !py-1.5 !px-3 !text-xs">Next &rarr;</a>
         {% endif %}
     </div>
 </div>
 {% endif %}
+{% include "_bulk_js.html" %}
 {% endblock %}

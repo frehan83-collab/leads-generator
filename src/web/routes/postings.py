@@ -17,7 +17,7 @@ from src.export.csv_exporter import (
     stream_postings_csv,
 )
 from src.web.auth import audit
-from src.web.pagination import page_size
+from src.web.pagination import age_filter, page_size
 
 postings_bp = Blueprint("postings", __name__)
 
@@ -28,12 +28,14 @@ def postings():
     keyword = request.args.get("keyword", "").strip()
     page = max(1, int(request.args.get("page", 1)))
     per_page = page_size()
+    older_than, older_than_raw = age_filter()
 
     rows, total = db.get_job_postings(
         search=search or None,
         keyword=keyword or None,
         limit=per_page,
         offset=(page - 1) * per_page,
+        older_than_days=older_than,
     )
     keywords = db.get_all_keywords()
     total_pages = max(1, (total + per_page - 1) // per_page)
@@ -48,6 +50,7 @@ def postings():
         search=search,
         keyword=keyword,
         keywords=keywords,
+        older_than=older_than_raw,
     )
 
 

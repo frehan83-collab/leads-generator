@@ -12,7 +12,7 @@ from src.emails.drafter import regenerate_draft
 from src.emails.templates import TEMPLATES
 from src.web.auth import audit
 from src.web.jobstate import is_running, set_running
-from src.web.pagination import page_size
+from src.web.pagination import age_filter, page_size
 
 campaigns_bp = Blueprint("campaigns", __name__)
 logger = logging.getLogger(__name__)
@@ -23,11 +23,13 @@ def campaigns():
     status_filter = request.args.get("status", "").strip()
     page = max(1, int(request.args.get("page", 1)))
     per_page = page_size()
+    older_than, older_than_raw = age_filter()
 
     drafts, total = db.get_email_drafts(
         status=status_filter or None,
         limit=per_page,
         offset=(page - 1) * per_page,
+        older_than_days=older_than,
     )
     total_pages = max(1, (total + per_page - 1) // per_page)
 
@@ -44,6 +46,7 @@ def campaigns():
         status_filter=status_filter,
         status_counts=status_counts,
         templates=TEMPLATES,
+        older_than=older_than_raw,
     )
 
 
@@ -91,6 +94,25 @@ def review_next():
         flash("Review queue is clear — no unreviewed drafts.", "success")
         return redirect(url_for("campaigns.campaigns"))
     return redirect(url_for("campaigns.draft_detail", draft_id=draft_id))
+
+
+@campaigns_bp.route("/campaigns/delete", methods=["POST"])
+def delete_drafts():
+    """Bulk-delete selected drafts (with their events). Prospects stay."""
+    ids = request.form.getlist("draft_ids")
+    draft_ids = [int(i) for i in ids if i.isdigit()]
+
+    if not draft_ids:
+        flash("No drafts selected.", "warning")
+        return redirect(url_for("campaigns.campaigns"))
+
+    deleted = db.delete_email_drafts(draft_ids)
+    audit("drafts.bulk_delete", "email_draft", "", f"{deleted} drafts")
+    flash(
+        f"Deleted {deleted} draft{'s' if deleted != 1 else ''}.",
+        "success",
+    )
+    return redirect(url_for("campaigns.campaigns"))
 
 
 @campaigns_bp.route("/campaigns/<int:draft_id>/approve", methods=["POST"])

@@ -595,6 +595,7 @@ def get_job_postings(
     keyword: str = None,
     limit: int = 50,
     offset: int = 0,
+    older_than_days: int | None = None,
 ) -> tuple[list[dict], int]:
     """Return paginated job postings with optional search/filter. Returns (rows, total)."""
     conditions = []
@@ -608,6 +609,9 @@ def get_job_postings(
     if keyword:
         conditions.append("keyword_matched = ?")
         params.append(keyword)
+    if older_than_days:
+        conditions.append("date(scraped_at) <= date('now', ?)")
+        params.append(f"-{int(older_than_days)} days")
 
     where = "WHERE " + " AND ".join(conditions) if conditions else ""
 
@@ -707,6 +711,7 @@ def get_prospects_filtered(
     company: str = None,
     limit: int = 50,
     offset: int = 0,
+    older_than_days: int | None = None,
 ) -> tuple[list[dict], int]:
     """Return paginated prospects with optional filters. Returns (rows, total)."""
     conditions = []
@@ -723,6 +728,9 @@ def get_prospects_filtered(
     if company:
         conditions.append("company_name LIKE ? ESCAPE '\\'")
         params.append(_like_contains(company))
+    if older_than_days:
+        conditions.append("date(created_at) <= date('now', ?)")
+        params.append(f"-{int(older_than_days)} days")
 
     where = "WHERE " + " AND ".join(conditions) if conditions else ""
 
@@ -814,6 +822,7 @@ def get_email_drafts(
     status: str = None,
     limit: int = 50,
     offset: int = 0,
+    older_than_days: int | None = None,
 ) -> tuple[list[dict], int]:
     """Return paginated email drafts with prospect and posting info."""
     conditions = []
@@ -822,6 +831,9 @@ def get_email_drafts(
     if status:
         conditions.append("ed.status = ?")
         params.append(status)
+    if older_than_days:
+        conditions.append("date(ed.created_at) <= date('now', ?)")
+        params.append(f"-{int(older_than_days)} days")
 
     where = "WHERE " + " AND ".join(conditions) if conditions else ""
 
@@ -1138,6 +1150,22 @@ def delete_job_postings(posting_ids: list[int]) -> int:
                 f"DELETE FROM outreach_log WHERE prospect_id IN ({p_placeholders})",
                 prospect_ids,
             )
+            # Delete email events for their drafts (else orphaned)
+            conn.execute(
+                f"""DELETE FROM email_events WHERE draft_id IN (
+                        SELECT id FROM email_drafts WHERE prospect_id IN ({p_placeholders})
+                    )""",
+                prospect_ids,
+            )
+            # Delete LinkedIn messages + CRM stages for those prospects
+            conn.execute(
+                f"DELETE FROM linkedin_messages WHERE prospect_id IN ({p_placeholders})",
+                prospect_ids,
+            )
+            conn.execute(
+                f"DELETE FROM prospect_stages WHERE prospect_id IN ({p_placeholders})",
+                prospect_ids,
+            )
             # Delete email drafts for those prospects
             conn.execute(
                 f"DELETE FROM email_drafts WHERE prospect_id IN ({p_placeholders})",
@@ -1164,6 +1192,71 @@ def delete_job_postings(posting_ids: list[int]) -> int:
         logger.info(
             "Deleted %d postings, %d prospects cascaded", deleted, len(prospect_ids)
         )
+        return deleted
+
+
+def delete_prospects(prospect_ids: list[int]) -> int:
+    """Delete prospects with full cleanup (drafts, events, stages, outreach).
+
+    Suppressions are intentionally KEPT: a suppressed address must stay
+    suppressed even after its prospect row is gone.
+    Returns the number of prospects deleted.
+    """
+    if not prospect_ids:
+        return 0
+    placeholders = ",".join("?" for _ in prospect_ids)
+    with get_connection() as conn:
+        conn.execute(
+            f"""DELETE FROM email_events WHERE draft_id IN (
+                    SELECT id FROM email_drafts WHERE prospect_id IN ({placeholders})
+                )""",
+            prospect_ids,
+        )
+        conn.execute(
+            f"DELETE FROM outreach_log WHERE prospect_id IN ({placeholders})",
+            prospect_ids,
+        )
+        conn.execute(
+            f"DELETE FROM linkedin_messages WHERE prospect_id IN ({placeholders})",
+            prospect_ids,
+        )
+        conn.execute(
+            f"DELETE FROM prospect_stages WHERE prospect_id IN ({placeholders})",
+            prospect_ids,
+        )
+        conn.execute(
+            f"DELETE FROM email_drafts WHERE prospect_id IN ({placeholders})",
+            prospect_ids,
+        )
+        cur = conn.execute(
+            f"DELETE FROM prospects WHERE id IN ({placeholders})",
+            prospect_ids,
+        )
+        deleted = cur.rowcount
+        logger.info("Deleted %d prospects (with drafts/events/stages)", deleted)
+        return deleted
+
+
+def delete_email_drafts(draft_ids: list[int]) -> int:
+    """Delete drafts with their events. Returns the number deleted."""
+    if not draft_ids:
+        return 0
+    placeholders = ",".join("?" for _ in draft_ids)
+    with get_connection() as conn:
+        conn.execute(
+            f"DELETE FROM email_events WHERE draft_id IN ({placeholders})",
+            draft_ids,
+        )
+        conn.execute(
+            f"DELETE FROM linkedin_messages WHERE draft_id IN ({placeholders})",
+            draft_ids,
+        )
+        cur = conn.execute(
+            f"DELETE FROM email_drafts WHERE id IN ({placeholders})",
+            draft_ids,
+        )
+        deleted = cur.rowcount
+        logger.info("Deleted %d email drafts", deleted)
         return deleted
 
 

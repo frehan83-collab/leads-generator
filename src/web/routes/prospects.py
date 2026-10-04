@@ -1,6 +1,14 @@
 """Prospects page — filterable table with CSV, Excel and PDF export."""
 
-from flask import Blueprint, Response, render_template, request
+from flask import (
+    Blueprint,
+    Response,
+    flash,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 
 from src.database import db
 from src.export.csv_exporter import (
@@ -8,7 +16,8 @@ from src.export.csv_exporter import (
     build_prospects_xlsx,
     stream_prospects_csv,
 )
-from src.web.pagination import page_size
+from src.web.auth import audit
+from src.web.pagination import age_filter, page_size
 
 prospects_bp = Blueprint("prospects", __name__)
 
@@ -20,6 +29,7 @@ def prospects():
     company = request.args.get("company", "").strip()
     page = max(1, int(request.args.get("page", 1)))
     per_page = page_size()
+    older_than, older_than_raw = age_filter()
 
     rows, total = db.get_prospects_filtered(
         search=search or None,
@@ -27,6 +37,7 @@ def prospects():
         company=company or None,
         limit=per_page,
         offset=(page - 1) * per_page,
+        older_than_days=older_than,
     )
     total_pages = max(1, (total + per_page - 1) // per_page)
 
@@ -46,6 +57,7 @@ def prospects():
         search=search,
         email_status=email_status,
         company=company,
+        older_than=older_than_raw,
     )
 
 
@@ -85,3 +97,25 @@ def export_pdf():
         mimetype="application/pdf",
         headers={"Content-Disposition": "attachment; filename=prospects.pdf"},
     )
+
+
+@prospects_bp.route("/prospects/delete", methods=["POST"])
+def delete_prospects():
+    """Bulk-delete selected prospects (cascades to drafts, stages, outreach).
+
+    Suppressions intentionally survive: a bounced address stays suppressed.
+    """
+    ids = request.form.getlist("prospect_ids")
+    prospect_ids = [int(i) for i in ids if i.isdigit()]
+
+    if not prospect_ids:
+        flash("No prospects selected.", "warning")
+        return redirect(url_for("prospects.prospects"))
+
+    deleted = db.delete_prospects(prospect_ids)
+    audit("prospects.bulk_delete", "prospect", "", f"{deleted} prospects")
+    flash(
+        f"Deleted {deleted} prospect{'s' if deleted != 1 else ''} and related drafts.",
+        "success",
+    )
+    return redirect(url_for("prospects.prospects"))
