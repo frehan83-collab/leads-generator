@@ -34,6 +34,41 @@ def _text_to_html(body: str) -> str:
 </html>"""
 
 
+def _send_with_retry(params: dict, max_attempts: int = 3):
+    """Send via Resend, retrying only safe-to-retry failures.
+
+    Retried: transport errors (no response received — a retry cannot
+    double-send) and rate limits. API rejections (validation, auth,
+    application errors including 5xx responses) raise immediately:
+    a 5xx may already have sent, so those need operator review, not
+    an automatic second POST.
+    """
+    import time as _time
+
+    import requests as _requests
+    from resend.exceptions import RateLimitError, ResendError
+
+    retryable = (
+        RateLimitError,
+        _requests.exceptions.ConnectionError,
+        _requests.exceptions.Timeout,
+    )
+    last_exc: Exception | None = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return resend.Emails.send(params)
+        except retryable as exc:
+            last_exc = exc
+            if attempt == max_attempts:
+                raise
+            logger.warning("Resend send attempt %d/%d failed (%s), retrying",
+                           attempt, max_attempts, exc)
+            _time.sleep(2.0 * attempt)
+        except ResendError:
+            raise
+    raise last_exc  # pragma: no cover - unreachable
+
+
 def send_email_direct(draft_id: int) -> dict:
     """Send a single approved draft directly via Resend.
 
@@ -51,6 +86,9 @@ def send_email_direct(draft_id: int) -> dict:
     if draft.get("sent_at"):
         return {"success": False, "error": "Draft already sent (double-send guard)"}
 
+    if db.is_suppressed(draft.get("prospect_email") or ""):
+        return {"success": False, "error": "Recipient is suppressed (bounce/complaint)"}
+
     if not api_key:
         return {"success": False, "error": "RESEND_API_KEY not configured"}
 
@@ -66,7 +104,7 @@ def send_email_direct(draft_id: int) -> dict:
             "html": email_html,
         }
 
-        result = resend.Emails.send(params)
+        result = _send_with_retry(params)
         resend_id = result.get("id") if isinstance(result, dict) else getattr(result, "id", None)
 
         now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()

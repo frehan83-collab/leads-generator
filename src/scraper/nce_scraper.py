@@ -10,7 +10,9 @@ import logging
 import re
 from typing import Optional
 from urllib.parse import urlparse
-from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+from playwright.sync_api import TimeoutError as PWTimeout
+
+from src.scraper.base import browser_context
 
 logger = logging.getLogger(__name__)
 
@@ -146,29 +148,8 @@ def scrape_nce_members(browser=None) -> list[dict]:
     results = []
 
     try:
-        if browser is None:
-            # Standalone mode — create own browser
-            with sync_playwright() as pw:
-                br = pw.chromium.launch(headless=True)
-                page = br.new_page()
-                try:
-                    logger.debug("Loading %s", NCE_MEMBERS_URL)
-                    page.goto(NCE_MEMBERS_URL, wait_until="domcontentloaded", timeout=25000)
-                    _scrape_page(page, results)
-                except PWTimeout:
-                    logger.error("Timeout loading NCE members page")
-                    br.close()
-                    return []
-                except Exception as exc:
-                    logger.error("Error scraping NCE members: %s", exc)
-                    br.close()
-                    return []
-                br.close()
-        else:
-            # Shared browser mode
-            from src.scraper.browser_manager import USER_AGENT
-            ctx = browser.new_context(user_agent=USER_AGENT, locale="nb-NO")
-            page = ctx.new_page()
+        with browser_context(browser) as context:
+            page = context.new_page()
             try:
                 logger.debug("Loading %s", NCE_MEMBERS_URL)
                 page.goto(NCE_MEMBERS_URL, wait_until="domcontentloaded", timeout=25000)
@@ -179,9 +160,6 @@ def scrape_nce_members(browser=None) -> list[dict]:
             except Exception as exc:
                 logger.error("Error scraping NCE members: %s", exc)
                 return []
-            finally:
-                ctx.close()
-
     except Exception as exc:
         logger.error("Error scraping NCE members: %s", exc)
         return []

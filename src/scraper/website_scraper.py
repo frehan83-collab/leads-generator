@@ -15,9 +15,14 @@ Strategy:
 
 import logging
 import re
+import time as _time
 from typing import Optional
 
-from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+import requests
+from playwright.sync_api import TimeoutError as PWTimeout
+
+from src.scraper.base import browser_context
+from src.scraper.browser_manager import USER_AGENT
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +66,118 @@ SKIP_PREFIXES = {
     "privacy", "gdpr", "personvern",
     "media", "press", "presse",
 }
+
+# Fast-path pages: plain-HTTP fetch first (cheap), Playwright only if needed.
+FAST_CONTACT_PATHS = ["", "/kontakt", "/om-oss", "/ansatte", "/team", "/contact", "/about"]
+
+# Minimal mailto extractor for the HTTP fast path
+MAILTO_PATTERN = re.compile(r'href=["\']mailto:([^"\'>?]+)', re.IGNORECASE)
+TAG_STRIP_PATTERN = re.compile(r"<script.*?</script>|<style.*?</style>|<[^>]+>", re.DOTALL | re.IGNORECASE)
+
+# robots.txt cache: domain -> (fetched_at, disallows) ; fail-open on error
+_ROBOTS_CACHE: dict[str, tuple[float, list[str] | None]] = {}
+_ROBOTS_TTL_SEC = 3600
+
+
+def _fetch_robots_disallows(domain: str) -> list[str] | None:
+    """Return Disallow prefixes for this domain, or None if unreachable.
+
+    None means 'no robots info' (fail-open, still within page budget).
+    A disallow of '/' is honored by the caller (skip the site entirely).
+    """
+    now = _time.monotonic()
+    cached = _ROBOTS_CACHE.get(domain)
+    if cached and now - cached[0] < _ROBOTS_TTL_SEC:
+        return cached[1]
+    try:
+        resp = requests.get(f"https://{domain}/robots.txt", timeout=10,
+                            headers={"User-Agent": USER_AGENT})
+        if not resp.ok:
+            _ROBOTS_CACHE[domain] = (now, None)
+            return None
+        disallows = []
+        for line in resp.text.splitlines():
+            line = line.strip()
+            if line.lower().startswith("disallow:"):
+                path = line.split(":", 1)[1].strip()
+                if path:
+                    disallows.append(path)
+        _ROBOTS_CACHE[domain] = (now, disallows)
+        return disallows
+    except Exception as exc:
+        logger.debug("robots.txt unreadable for %s: %s", domain, exc)
+        _ROBOTS_CACHE[domain] = (now, None)
+        return None
+
+
+def _path_allowed(path: str, disallows: list[str] | None) -> bool:
+    if not disallows:
+        return True
+    probe = path or "/"
+    return not any(probe == d or probe.startswith(d.rstrip("/") + "/") or d == "/" and True
+                   for d in disallows if d == "/" or probe.startswith(d))
+
+
+def _is_site_blocked(disallows: list[str] | None) -> bool:
+    return bool(disallows) and "/" in disallows
+
+
+def _name_from_local(local: str) -> str:
+    """Derive 'Firstname Lastname' from a firstname.lastname local part."""
+    if "." in local:
+        parts = local.split(".")
+        if len(parts) == 2 and all(p.isalpha() for p in parts):
+            return f"{parts[0].capitalize()} {parts[1].capitalize()}"
+    return ""
+
+
+def _record_found(found: dict, email: str, domain: str, snippet: str) -> None:
+    """Score and store one candidate email with a text snippet for title."""
+    email = email.lower()
+    if not email or not EMAIL_PATTERN.match(email):
+        return
+    if not _is_valid_email(email, domain):
+        return
+    score = _score_email(email)
+    title = _extract_title_from_text(snippet)
+    name = _name_from_local(email.split("@")[0])
+    if email not in found or found[email]["score"] < score:
+        found[email] = {"score": score, "title": title, "name": name}
+
+
+def _scrape_fast(domain: str, base_url: str, paths: list[str], timeout_sec: int,
+                 found: dict, deadline: float | None = None) -> None:
+    """Plain-HTTP fast path: fetch contact pages, extract emails, no browser."""
+    session = requests.Session()
+    session.headers.update({"User-Agent": USER_AGENT, "Accept-Language": "nb-NO,nb;q=0.9"})
+    for path in paths:
+        if deadline is not None and _time.monotonic() > deadline:
+            break
+        url = base_url + path
+        try:
+            resp = session.get(url, timeout=min(timeout_sec, 12))
+            if not resp.ok or not resp.text:
+                continue
+            html = resp.text
+            text = TAG_STRIP_PATTERN.sub(" ", html)
+            # Strategy A: mailto links (with surrounding text for title)
+            for m in MAILTO_PATTERN.finditer(html):
+                start = max(0, m.start() - 2000)
+                snippet = TAG_STRIP_PATTERN.sub(" ", html[start:m.end() + 500])
+                _record_found(found, m.group(1).strip(), domain, snippet)
+            # Strategy B: bare emails in visible text
+            for m in EMAIL_PATTERN.finditer(text):
+                start = max(0, m.start() - 150)
+                _record_found(found, m.group(0), domain, text[start:m.end() + 150])
+            # Stop early on a personal hit, like the browser path does
+            best = max((v["score"] for v in found.values()), default=0)
+            if best >= 10 and len(found) >= 2:
+                logger.debug("Fast path found enough personal emails for %s", domain)
+                break
+        except Exception as exc:
+            logger.debug("Fast-path fetch failed for %s: %s", url, exc)
+            continue
+
 
 # Prefixes that are USEFUL (role addresses worth contacting)
 GOOD_ROLE_PREFIXES = {
@@ -197,11 +314,13 @@ def _get_mailto_contacts(page) -> list[dict]:
 
 
 def _scrape_pages(page, domain: str, base_url: str, timeout_sec: int, found: dict,
-                  deadline: float | None = None) -> None:
+                  deadline: float | None = None,
+                  allowed_paths: list[str] | None = None) -> None:
     """Core scraping logic — visit contact pages and extract emails into `found` dict."""
     import time as _time
 
-    for path in CONTACT_PATHS:
+    paths = allowed_paths if allowed_paths is not None else CONTACT_PATHS
+    for path in paths:
         if deadline is not None and _time.monotonic() > deadline:
             break
         url = base_url + path
@@ -231,12 +350,7 @@ def _scrape_pages(page, domain: str, base_url: str, timeout_sec: int, found: dic
                 title = _extract_title_from_text(context_text)
 
                 # Parse name from email local part if firstname.lastname
-                name = ""
-                local = email.split("@")[0]
-                if "." in local:
-                    parts = local.split(".")
-                    if len(parts) == 2 and all(p.isalpha() for p in parts):
-                        name = f"{parts[0].capitalize()} {parts[1].capitalize()}"
+                name = _name_from_local(email.split("@")[0])
 
                 if email not in found or found[email]["score"] < score:
                     found[email] = {"score": score, "title": title, "name": name}
@@ -260,12 +374,7 @@ def _scrape_pages(page, domain: str, base_url: str, timeout_sec: int, found: dic
                 snippet = body_text[start:end]
                 title = _extract_title_from_text(snippet)
 
-                name = ""
-                local = email.split("@")[0]
-                if "." in local:
-                    parts = local.split(".")
-                    if len(parts) == 2 and all(p.isalpha() for p in parts):
-                        name = f"{parts[0].capitalize()} {parts[1].capitalize()}"
+                name = _name_from_local(email.split("@")[0])
 
                 found[email] = {"score": score, "title": title, "name": name}
                 logger.debug(
@@ -308,35 +417,29 @@ def scrape_emails_from_website(domain: str, timeout_sec: int = 20, browser=None,
     # email -> {"score": int, "title": str, "name": str}
     found: dict[str, dict] = {}
 
-    try:
-        if browser is None:
-            # Standalone mode — create own browser
-            with sync_playwright() as pw:
-                br = pw.chromium.launch(headless=True)
-                context = br.new_context(
-                    user_agent=(
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                        "AppleWebKit/537.36 (KHTML, like Gecko) "
-                        "Chrome/124.0.0.0 Safari/537.36"
-                    ),
-                    locale="nb-NO",
-                )
-                page = context.new_page()
-                _scrape_pages(page, domain, base_url, timeout_sec, found, deadline)
-                br.close()
-        else:
-            # Shared browser mode
-            from src.scraper.browser_manager import USER_AGENT
-            ctx = browser.new_context(user_agent=USER_AGENT, locale="nb-NO")
-            page = ctx.new_page()
-            try:
-                _scrape_pages(page, domain, base_url, timeout_sec, found, deadline)
-            finally:
-                ctx.close()
-
-    except Exception as exc:
-        logger.warning("scrape_emails_from_website failed for %s: %s", domain, exc)
+    # robots.txt: honor a site-wide Disallow, filter paths elsewhere
+    disallows = _fetch_robots_disallows(domain)
+    if _is_site_blocked(disallows):
+        logger.info("Skipping %s: disallowed by robots.txt", domain)
         return []
+
+    # Fast path: plain HTTP on the highest-yield pages (no browser cost).
+    fast_paths = [p for p in FAST_CONTACT_PATHS if _path_allowed(p, disallows)]
+    _scrape_fast(domain, base_url, fast_paths, timeout_sec, found, deadline)
+    best = max((v["score"] for v in found.values()), default=0)
+    if best >= 10 and found:
+        logger.debug("Fast path sufficient for %s, skipping browser", domain)
+    else:
+        # Browser fallback for JS-rendered pages, within remaining budget.
+        try:
+            with browser_context(browser) as context:
+                page = context.new_page()
+                _scrape_pages(page, domain, base_url, timeout_sec, found, deadline,
+                              allowed_paths=[p for p in CONTACT_PATHS if _path_allowed(p, disallows)])
+        except Exception as exc:
+            logger.warning("scrape_emails_from_website failed for %s: %s", domain, exc)
+            if not found:
+                return []
 
     # Sort by score descending, return top 5 as dicts
     ranked = sorted(found.keys(), key=lambda e: found[e]["score"], reverse=True)

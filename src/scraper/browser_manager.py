@@ -18,6 +18,25 @@ USER_AGENT = (
 )
 
 
+def apply_stealth_to_context(ctx) -> bool:
+    """Apply playwright-stealth evasions to a context. Returns True if applied."""
+    try:
+        from playwright_stealth import Stealth
+        Stealth().apply_stealth_sync(ctx)
+        logger.debug("Stealth evasions applied to browser context")
+        return True
+    except ImportError:
+        pass
+    try:
+        from playwright_stealth import stealth_sync  # legacy 1.x API
+        stealth_sync(ctx)
+        logger.debug("Stealth evasions applied (legacy API)")
+        return True
+    except ImportError:
+        logger.debug("playwright_stealth not installed — scraping without evasions")
+        return False
+
+
 class BrowserManager:
     """
     Shared browser context manager.
@@ -68,19 +87,7 @@ class BrowserManager:
         }
         defaults.update(kwargs)
         ctx = self._browser.new_context(**defaults)
-        # Apply stealth evasions if available (playwright-stealth 2.x API,
-        # with fallback to the legacy 1.x function).
-        try:
-            from playwright_stealth import Stealth
-            Stealth().apply_stealth_sync(ctx)
-            logger.debug("Stealth evasions applied to browser context")
-        except ImportError:
-            try:
-                from playwright_stealth import stealth_sync
-                stealth_sync(ctx)
-                logger.debug("Stealth evasions applied (legacy API)")
-            except ImportError:
-                logger.debug("playwright_stealth not installed — scraping without evasions")
+        apply_stealth_to_context(ctx)
         return ctx
 
     @property

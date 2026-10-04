@@ -10,7 +10,14 @@ import logging
 import re
 from datetime import datetime, timezone
 from typing import Generator
-from playwright.sync_api import sync_playwright, Page, TimeoutError as PWTimeout
+from playwright.sync_api import Page, TimeoutError as PWTimeout
+
+from src.scraper.base import (
+    accept_cookies,
+    browser_context,
+    check_selectors,
+    snapshot_on_fail,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +87,13 @@ def _parse_listing_page(page: Page, keyword: str) -> list[dict]:
         page.wait_for_selector("a[href*='/stillinger/stilling/']", timeout=12000)
     except PWTimeout:
         logger.warning("No job listings found for keyword '%s'", keyword)
+        health = check_selectors(page, {
+            "job_links": "a[href*='/stillinger/stilling/']",
+            "articles": "article",
+            "headings": "h2, h3",
+        })
+        logger.warning("nav.no selector health for '%s': %s", keyword, health)
+        snapshot_on_fail(page, f"nav_nocards_{keyword}")
         return results
 
     # Find all job posting links
@@ -270,10 +284,8 @@ def scrape_keyword(keyword: str, max_pages: int = 5, browser=None, known_ids: se
 
             try:
                 page.goto(url, wait_until="domcontentloaded", timeout=25000)
-
-                # Accept cookie banner if present
+                accept_cookies(page)
                 try:
-                    page.click("button:has-text('Godta'), button:has-text('Aksepter'), button:has-text('Godkjenn')", timeout=2000)
                     page.wait_for_timeout(500)
                 except Exception:
                     pass
@@ -311,28 +323,8 @@ def scrape_keyword(keyword: str, max_pages: int = 5, browser=None, known_ids: se
                 logger.error("Error scraping page %d: %s", page_num + 1, exc)
                 break
 
-    if browser is None:
-        # Standalone mode — create own browser
-        with sync_playwright() as pw:
-            br = pw.chromium.launch(headless=True)
-            context = br.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/124.0.0.0 Safari/537.36"
-                ),
-                locale="nb-NO",
-            )
-            yield from _scrape_with_context(context)
-            br.close()
-    else:
-        # Shared browser mode
-        from src.scraper.browser_manager import USER_AGENT
-        context = browser.new_context(user_agent=USER_AGENT, locale="nb-NO")
-        try:
-            yield from _scrape_with_context(context)
-        finally:
-            context.close()
+    with browser_context(browser) as context:
+        yield from _scrape_with_context(context)
 
     logger.info("Scraped %d postings from NAV for keyword '%s'", total, keyword)
 

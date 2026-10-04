@@ -10,12 +10,24 @@ from typing import Generator
 
 from urllib.parse import urlparse
 
-from playwright.sync_api import sync_playwright, Page, TimeoutError as PWTimeout
+from playwright.sync_api import Page, TimeoutError as PWTimeout
+
+from src.scraper.base import (
+    accept_cookies,
+    browser_context,
+    check_selectors,
+    snapshot_on_fail,
+)
 
 logger = logging.getLogger(__name__)
 
 FINN_SEARCH_URL = "https://www.finn.no/job/search"
 FINN_BASE_URL = "https://www.finn.no"
+
+FINN_HEALTH_SELECTORS = {
+    "cards": "article",
+    "job_links": "a[href*='/job/ad/']",
+}
 
 
 def scrape_company_domain(posting_url: str, browser=None) -> str | None:
@@ -29,47 +41,18 @@ def scrape_company_domain(posting_url: str, browser=None) -> str | None:
         browser: Optional shared Playwright browser instance for reuse
     """
     try:
-        if browser is None:
-            # Standalone mode — create own browser
-            with sync_playwright() as pw:
-                br = pw.chromium.launch(headless=True)
-                page = br.new_page()
-                page.goto(posting_url, wait_until="domcontentloaded", timeout=20000)
-                try:
-                    page.click("button:has-text('Godta alle')", timeout=2000)
-                except Exception:
-                    pass
-                link_el = page.query_selector("a:has-text('Hjemmeside')")
-                if link_el:
-                    href = link_el.get_attribute("href") or ""
-                    if href:
-                        parsed = urlparse(href)
-                        domain = parsed.netloc.lstrip("www.")
-                        br.close()
-                        logger.debug("Found domain from finn.no posting: %s -> %s", posting_url, domain)
-                        return domain
-                br.close()
-        else:
-            # Shared browser mode — create a context, use it, close it
-            from src.scraper.browser_manager import USER_AGENT
-            ctx = browser.new_context(user_agent=USER_AGENT, locale="nb-NO")
-            page = ctx.new_page()
-            try:
-                page.goto(posting_url, wait_until="domcontentloaded", timeout=20000)
-                try:
-                    page.click("button:has-text('Godta alle')", timeout=2000)
-                except Exception:
-                    pass
-                link_el = page.query_selector("a:has-text('Hjemmeside')")
-                if link_el:
-                    href = link_el.get_attribute("href") or ""
-                    if href:
-                        parsed = urlparse(href)
-                        domain = parsed.netloc.lstrip("www.")
-                        logger.debug("Found domain from finn.no posting: %s -> %s", posting_url, domain)
-                        return domain
-            finally:
-                ctx.close()
+        with browser_context(browser) as context:
+            page = context.new_page()
+            page.goto(posting_url, wait_until="domcontentloaded", timeout=20000)
+            accept_cookies(page)
+            link_el = page.query_selector("a:has-text('Hjemmeside')")
+            if link_el:
+                href = link_el.get_attribute("href") or ""
+                if href:
+                    parsed = urlparse(href)
+                    domain = parsed.netloc.lstrip("www.")
+                    logger.debug("Found domain from finn.no posting: %s -> %s", posting_url, domain)
+                    return domain
     except Exception as exc:
         logger.debug("scrape_company_domain error for %s: %s", posting_url, exc)
     return None
@@ -134,6 +117,9 @@ def _parse_listing_page(page: Page, keyword: str) -> list[dict]:
         page.wait_for_selector("article", timeout=12000)
     except PWTimeout:
         logger.warning("No job cards found for keyword '%s'", keyword)
+        health = check_selectors(page, FINN_HEALTH_SELECTORS)
+        logger.warning("finn.no selector health for '%s': %s", keyword, health)
+        snapshot_on_fail(page, f"finn_nocards_{keyword}")
         return results
 
     articles = page.query_selector_all("article")
@@ -235,10 +221,8 @@ def scrape_keyword(keyword: str, max_pages: int = 5, browser=None, known_ids: se
 
             try:
                 page.goto(url, wait_until="domcontentloaded", timeout=25000)
-
-                # Accept cookie banner if present
+                accept_cookies(page)
                 try:
-                    page.click("button:has-text('Godta alle')", timeout=3000)
                     page.wait_for_timeout(500)
                 except Exception:
                     pass
@@ -271,28 +255,8 @@ def scrape_keyword(keyword: str, max_pages: int = 5, browser=None, known_ids: se
                 logger.error("Error scraping page %d: %s", page_num, exc)
                 break
 
-    if browser is None:
-        # Standalone mode — create own browser
-        with sync_playwright() as pw:
-            br = pw.chromium.launch(headless=True)
-            context = br.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/124.0.0.0 Safari/537.36"
-                ),
-                locale="nb-NO",
-            )
-            yield from _scrape_with_context(context)
-            br.close()
-    else:
-        # Shared browser mode
-        from src.scraper.browser_manager import USER_AGENT
-        context = browser.new_context(user_agent=USER_AGENT, locale="nb-NO")
-        try:
-            yield from _scrape_with_context(context)
-        finally:
-            context.close()
+    with browser_context(browser) as context:
+        yield from _scrape_with_context(context)
 
     logger.info("Scraped %d postings for keyword '%s'", total, keyword)
 

@@ -69,6 +69,7 @@ def resend_webhook():
         })
 
         # Update draft counters/timestamps if we found the draft
+        draft = None
         if draft_id:
             if event_type == "opened":
                 draft = db.get_email_draft_by_id(draft_id)
@@ -88,6 +89,26 @@ def resend_webhook():
                 db.update_email_draft(draft_id, {
                     "notes": f"BOUNCED: {data.get('bounce_type', 'unknown')}",
                 })
+
+            elif event_type == "complained":
+                db.update_email_draft(draft_id, {
+                    "notes": "COMPLAINT: recipient reported spam",
+                })
+
+            if event_type in ("bounced", "complained"):
+                # Permanent suppression: never contact this address again.
+                try:
+                    draft = draft or db.get_email_draft_by_id(draft_id)
+                    prospect_id = (draft or {}).get("prospect_id")
+                    addresses = [a.strip() for a in data.get("to", []) if a]
+                    if prospect_id:
+                        prospect = db.get_prospect_by_id(prospect_id)
+                        if prospect and prospect.get("email"):
+                            addresses.append(prospect["email"])
+                    for address in addresses:
+                        db.add_suppression(address, event_type)
+                except Exception as suppress_exc:
+                    logger.warning("Suppression failed: %s", suppress_exc)
 
         # Auto-move prospect through CRM pipeline based on email events
         if draft_id and event_type in ("delivered", "opened", "clicked"):

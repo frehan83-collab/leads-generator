@@ -327,6 +327,15 @@ _SCHEMA = """
                 ON prospect_stages(prospect_id);
             CREATE INDEX IF NOT EXISTS idx_prospect_stages_stage
                 ON prospect_stages(stage);
+
+            -- Suppression list: never send to these addresses again
+            CREATE TABLE IF NOT EXISTS suppressions (
+                email       TEXT UNIQUE NOT NULL,
+                reason      TEXT NOT NULL DEFAULT 'bounce',
+                created_at  TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_suppressions_email
+                ON suppressions(email);
         """
 
 
@@ -732,7 +741,7 @@ def get_approved_drafts_with_prospects() -> list[dict]:
     """Return all approved drafts with prospect data needed for Snov enrollment."""
     with get_connection() as conn:
         rows = conn.execute("""
-            SELECT ed.id, ed.prospect_id, ed.subject, ed.body,
+            SELECT ed.id, ed.prospect_id, ed.subject, ed.body, ed.scheduled_for,
                    p.email as prospect_email,
                    p.first_name, p.last_name,
                    p.full_name as prospect_name,
@@ -1401,6 +1410,44 @@ def update_linkedin_message(message_id: int, data: dict) -> None:
         conn.execute(
             f"UPDATE linkedin_messages SET {', '.join(sets)} WHERE id = ?", params
         )
+
+
+# ------------------------------------------------------------------
+# Suppression list (never send to these addresses)
+# ------------------------------------------------------------------
+
+def add_suppression(email: str, reason: str = "bounce") -> None:
+    """Add an address to the suppression list (idempotent)."""
+    email = (email or "").strip().lower()
+    if not email:
+        return
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO suppressions (email, reason, created_at) "
+            "VALUES (?, ?, ?)",
+            (email, reason, _now()),
+        )
+
+
+def is_suppressed(email: str) -> bool:
+    """Return True if the address must never be contacted again."""
+    if not email:
+        return False
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM suppressions WHERE email = ?",
+            (email.strip().lower(),),
+        ).fetchone()
+        return row is not None
+
+
+def get_suppressions() -> list[dict]:
+    """Return the full suppression list (for settings/audit display)."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT email, reason, created_at FROM suppressions ORDER BY created_at DESC"
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def get_linkedin_stats() -> dict:

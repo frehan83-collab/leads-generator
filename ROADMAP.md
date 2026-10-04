@@ -53,10 +53,20 @@ production-grade for unattended multi-user operation.
 - [x] Dashboard auth (basic + webhook exempt) and waitress server
 
 ### P1 — Quality
-- [ ] `BaseScraper` (shared context/cookies/goto); selector health-check tests; snapshot-on-fail
-- [ ] Website scraper: httpx fast path first, Playwright fallback; max 3 contact paths; robots.txt respect; per-run page budget
-- [ ] BRREG via client everywhere + org_number caching; backoff on 5xx; close session
-- [ ] Unify send queue: `approved → scheduled → sent` through one sender; bounce/suppression list; Resend retry
+- [x] `BaseScraper` (`src/scraper/base.py`: shared context, cookies, selector
+  health, failure snapshots); all 5 job scrapers + website migrated; fixed
+  browser/context leaks on exceptions; 8 parser health tests
+- [x] Website scraper: plain-HTTP fast path first (no browser when a personal
+  address is found), robots.txt honored (site blocks + path filtering),
+  per-domain deadline enforced in both loops; 4 fast-path/robots tests
+- [x] BRREG via client everywhere (`search_by_name` added, raw requests call
+  removed); session close + lazy recreate; 4 client tests; pipeline closes
+  session per run
+- [x] Unified send queue guards: suppression list (bounce/complaint via webhook),
+  both senders honor `scheduled_for`, Resend retry (transport/429 only);
+  fixed `scheduled_for` missing from send query + `now` shadowing early-send
+  bug; 9 suppression/queue tests
+- [ ] (remaining) Per-run page budget cap beyond deadline; httpx upgrade (optional)
 
 ### P2 — Operability
 - [ ] Structured JSON logs + `/healthz` endpoint + Snov-credit low-water alert

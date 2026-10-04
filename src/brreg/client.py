@@ -36,15 +36,37 @@ class BRREGClient:
     """Client for interacting with BRREG (Norwegian Business Registry) API."""
 
     def __init__(self):
-        self.session = requests.Session()
-        self.session.headers.update({
+        self.session: requests.Session | None = None
+        self._new_session()
+
+    def _new_session(self) -> None:
+        session = requests.Session()
+        session.headers.update({
             "Accept": "application/json",
             "User-Agent": "LeadsGenerator/1.0 (Lead generation tool)",
         })
+        self.session = session
+
+    def close(self) -> None:
+        """Close the underlying HTTP session (idempotent, lazily recreated)."""
+        if self.session is not None:
+            try:
+                self.session.close()
+            except Exception:
+                pass
+            self.session = None
+
+    def __enter__(self) -> "BRREGClient":
+        return self
+
+    def __exit__(self, *args) -> None:
+        self.close()
 
     @retry(max_attempts=3, base_delay=1.0, retryable_exceptions=(requests.exceptions.RequestException,))
     def _get(self, path: str, params: dict = None) -> dict:
-        """Make GET request with rate limiting."""
+        """Make GET request with rate limiting (5xx retried with backoff)."""
+        if self.session is None:
+            self._new_session()
         time.sleep(RATE_LIMIT_DELAY)
         url = f"{BASE_URL}{path}"
         try:
@@ -156,6 +178,15 @@ class BRREGClient:
                 break
 
         logger.info("Fetched %d companies from BRREG", total_fetched)
+
+    def search_by_name(self, name: str, size: int = 5) -> list[dict]:
+        """Search companies by name. Returns raw enhet dicts (may be empty)."""
+        try:
+            result = self._get("/enheter", {"navn": name, "size": max(1, min(size, 100))})
+            return result.get("_embedded", {}).get("enheter", [])
+        except Exception as exc:
+            logger.error("BRREG name search failed for '%s': %s", name, exc)
+            return []
 
     def get_company_details(self, org_number: str) -> Optional[dict]:
         """

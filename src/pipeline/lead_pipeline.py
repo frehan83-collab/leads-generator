@@ -138,6 +138,11 @@ class LeadPipeline:
             self._stats["errors"] += 1
             self._finish_run("failed", error_message=str(exc))
             raise
+        finally:
+            try:
+                self.brreg.close()
+            except Exception:
+                pass
 
         self._log_stats()
         return self._stats
@@ -415,43 +420,35 @@ class LeadPipeline:
         except Exception as exc:
             logger.debug("Fuzzy match error for '%s': %s", company_name, exc)
 
-        # Try BRREG API name search as fallback
+        # Try BRREG API name search as fallback (client: retries + backoff)
         try:
             cleaned = self._clean_company_name(company_name)
-            import requests as _req
-            resp = _req.get(
-                "https://data.brreg.no/enhetsregisteret/api/enheter",
-                params={"navn": cleaned, "size": 1},
-                headers={"Accept": "application/json"},
-                timeout=15,
-            )
-            if resp.ok:
-                companies = resp.json().get("_embedded", {}).get("enheter", [])
-                if companies:
-                    if len(companies) == 1:
-                        org_number = companies[0].get("organisasjonsnummer")
-                    else:
-                        # Pick best fuzzy match from API results
-                        try:
-                            from rapidfuzz import fuzz
-                            best_score = 0
-                            best_org = None
-                            for c in companies[:5]:  # Check top 5
-                                score = fuzz.token_sort_ratio(cleaned, c.get("navn", ""))
-                                if score > best_score:
-                                    best_score = score
-                                    best_org = c.get("organisasjonsnummer")
-                            if best_score >= 70:
-                                org_number = best_org
-                            else:
-                                org_number = companies[0].get("organisasjonsnummer")
-                        except ImportError:
+            companies = self.brreg.search_by_name(cleaned, size=5)
+            if companies:
+                if len(companies) == 1:
+                    org_number = companies[0].get("organisasjonsnummer")
+                else:
+                    # Pick best fuzzy match from API results
+                    try:
+                        from rapidfuzz import fuzz
+                        best_score = 0
+                        best_org = None
+                        for c in companies[:5]:  # Check top 5
+                            score = fuzz.token_sort_ratio(cleaned, c.get("navn", ""))
+                            if score > best_score:
+                                best_score = score
+                                best_org = c.get("organisasjonsnummer")
+                        if best_score >= 70:
+                            org_number = best_org
+                        else:
                             org_number = companies[0].get("organisasjonsnummer")
-                    if org_number:
-                        logger.debug("BRREG API matched '%s' to org=%s", company_name, org_number)
-                        with self._stats_lock:
-                            self._stats["brreg_matches"] += 1
-                        return org_number
+                    except ImportError:
+                        org_number = companies[0].get("organisasjonsnummer")
+                if org_number:
+                    logger.debug("BRREG API matched '%s' to org=%s", company_name, org_number)
+                    with self._stats_lock:
+                        self._stats["brreg_matches"] += 1
+                    return org_number
         except Exception as exc:
             logger.debug("BRREG API enrichment failed for '%s': %s", company_name, exc)
 

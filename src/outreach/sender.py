@@ -3,16 +3,31 @@ Outreach sender — pushes approved email drafts to Snov.io campaign list.
 
 Each prospect is added to the Snov list (auto-enrolls in active campaign),
 then the draft status is flipped to 'sent'.
+
+Guards (shared queue semantics with the Resend path):
+- suppressed addresses are skipped, never enrolled;
+- drafts with a future scheduled_for are skipped until due.
 """
 
 import logging
-import os
 from datetime import datetime, timezone
 
+from src.config import settings
 from src.database import db
 from src.snov.client import SnovClient
 
 logger = logging.getLogger(__name__)
+
+
+def _scheduled_for_future(draft: dict, now: datetime) -> bool:
+    scheduled_for = draft.get("scheduled_for")
+    if not scheduled_for:
+        return False
+    try:
+        sched_dt = datetime.fromisoformat(scheduled_for).replace(tzinfo=timezone.utc)
+        return sched_dt > now
+    except (ValueError, TypeError):
+        return False
 
 
 def send_approved_drafts() -> dict:
@@ -21,13 +36,14 @@ def send_approved_drafts() -> dict:
 
     Returns stats dict: {total, sent, failed, errors}.
     """
-    snov_list_id = os.getenv("SNOV_LIST_ID")
+    snov_list_id = settings.snov_list_id
     if not snov_list_id:
         logger.error("SNOV_LIST_ID not set — cannot send drafts")
         return {"total": 0, "sent": 0, "failed": 0, "errors": ["SNOV_LIST_ID not set"]}
 
     drafts = db.get_approved_drafts_with_prospects()
-    stats = {"total": len(drafts), "sent": 0, "failed": 0, "errors": []}
+    stats = {"total": len(drafts), "sent": 0, "failed": 0,
+             "skipped_suppressed": 0, "skipped_scheduled": 0, "errors": []}
 
     if not drafts:
         logger.info("No approved drafts to send")
@@ -35,8 +51,18 @@ def send_approved_drafts() -> dict:
 
     logger.info("Sending %d approved drafts to Snov.io list %s", len(drafts), snov_list_id)
     snov = SnovClient()
+    now = datetime.now(timezone.utc)
 
     for draft in drafts:
+        email = draft["prospect_email"]
+        if db.is_suppressed(email):
+            stats["skipped_suppressed"] += 1
+            logger.info("Skipping suppressed address %s", email)
+            continue
+        if _scheduled_for_future(draft, now):
+            stats["skipped_scheduled"] += 1
+            logger.debug("Draft #%d scheduled for %s, skipping", draft["id"], draft.get("scheduled_for"))
+            continue
         try:
             prospect = {
                 "email": draft["prospect_email"],
@@ -51,16 +77,16 @@ def send_approved_drafts() -> dict:
             added = snov.add_prospect_to_list(snov_list_id, prospect)
 
             if added:
-                now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+                sent_at = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
                 db.update_email_draft(draft["id"], {
                     "status": "sent",
-                    "sent_at": now,
+                    "sent_at": sent_at,
                 })
                 db.log_outreach({
                     "prospect_id": draft["prospect_id"],
                     "campaign_id": snov_list_id,
                     "status": "sent_to_snov",
-                    "sent_at": now,
+                    "sent_at": sent_at,
                     "notes": f"Approved draft #{draft['id']} pushed to Snov list {snov_list_id}",
                 })
                 stats["sent"] += 1

@@ -64,6 +64,10 @@ Central defaults and validation live in `src/config.py`.
 
 - Follow-ups are created as **drafts awaiting approval** unless `FOLLOWUP_AUTO_SEND=true`.
 - `send_email_direct` refuses drafts that aren't `approved` **and** refuses already-sent drafts (double-send guard).
+- **Suppression list**: bounces and spam complaints (via Resend webhooks) permanently
+  exclude addresses from both send paths; scheduled-for dates are honored by both.
+- Resend retries only transport errors and rate limits — never API rejections
+  (a 5xx may already have sent).
 - All secrets come from the environment — no committed fallbacks.
 
 ## Testing

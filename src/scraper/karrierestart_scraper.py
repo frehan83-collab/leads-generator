@@ -8,7 +8,9 @@ import re
 from datetime import datetime, timezone
 from typing import Generator
 
-from playwright.sync_api import sync_playwright, Page, TimeoutError as PWTimeout
+from playwright.sync_api import Page, TimeoutError as PWTimeout
+
+from src.scraper.base import accept_cookies, browser_context
 
 logger = logging.getLogger(__name__)
 
@@ -133,26 +135,11 @@ def scrape_keyword(keyword: str, max_pages: int = 5, browser=None, known_ids: se
     logger.info("Scraping karrierestart.no for keyword: '%s'", keyword)
     total = 0
 
-    if browser is None:
-        with sync_playwright() as pw:
-            browser_local = pw.chromium.launch(headless=True)
-            context = browser_local.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                locale="nb-NO",
-            )
-            page = context.new_page()
-            for posting in _scrape_pages(page, keyword, max_pages, known_ids):
-                yield posting
-                total += 1
-            browser_local.close()
-    else:
-        from src.scraper.browser_manager import USER_AGENT
-        context = browser.new_context(user_agent=USER_AGENT, locale="nb-NO")
+    with browser_context(browser) as context:
         page = context.new_page()
         for posting in _scrape_pages(page, keyword, max_pages, known_ids):
             yield posting
             total += 1
-        context.close()
 
     logger.info("Scraped %d postings from karrierestart.no for '%s'", total, keyword)
 
@@ -165,10 +152,8 @@ def _scrape_pages(page: Page, keyword: str, max_pages: int, known_ids: set = Non
 
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=25000)
-
-            # Cookie banner
+            accept_cookies(page)
             try:
-                page.click("button:has-text('Godta'), button:has-text('Aksepter')", timeout=2000)
                 page.wait_for_timeout(500)
             except Exception:
                 pass
