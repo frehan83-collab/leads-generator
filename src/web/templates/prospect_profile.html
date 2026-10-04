@@ -58,6 +58,7 @@
                     </div>
                 </div>
                 <span class="badge badge-{{ prospect.email_status or 'unknown' }} flex-shrink-0">{{ prospect.email_status or 'unknown' }}</span>
+                <a href="/prospects/{{ prospect.id }}/brief" class="btn-primary !text-xs !py-1.5 !px-3 flex-shrink-0">Meeting brief</a>
             </div>
         </div>
 

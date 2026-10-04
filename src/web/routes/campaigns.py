@@ -11,11 +11,10 @@ from src.database import db
 from src.emails.drafter import regenerate_draft
 from src.emails.templates import TEMPLATES
 from src.web.auth import audit
+from src.web.jobstate import is_running, set_running
 
 campaigns_bp = Blueprint("campaigns", __name__)
 logger = logging.getLogger(__name__)
-
-_sending_running = False
 
 
 @campaigns_bp.route("/campaigns")
@@ -125,15 +124,13 @@ def regenerate(draft_id):
 @campaigns_bp.route("/campaigns/send-all-approved", methods=["POST"])
 def send_all_approved():
     """Bulk-send all approved drafts to Snov.io in background."""
-    global _sending_running
-    if _sending_running:
+    if is_running("sending"):
         flash("Send job is already running.", "warning")
         return redirect(url_for("campaigns.campaigns"))
 
-    _sending_running = True
+    set_running("sending", True)
 
     def _run():
-        global _sending_running
         try:
             from src.outreach.sender import send_approved_drafts
 
@@ -141,7 +138,7 @@ def send_all_approved():
         except Exception as exc:
             logger.error("Bulk send failed: %s", exc, exc_info=True)
         finally:
-            _sending_running = False
+            set_running("sending", False)
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()
@@ -206,8 +203,6 @@ def send_single(draft_id):
 
 # ── Resend direct-email routes ────────────────────────────────────────
 
-_emailing_running = False
-
 
 @campaigns_bp.route("/campaigns/<int:draft_id>/send-email", methods=["POST"])
 def send_email_single(draft_id):
@@ -230,15 +225,13 @@ def send_email_single(draft_id):
 @campaigns_bp.route("/campaigns/email-all-approved", methods=["POST"])
 def email_all_approved():
     """Bulk-send all approved drafts directly via Resend in background."""
-    global _emailing_running
-    if _emailing_running:
+    if is_running("emailing"):
         flash("Email send job is already running.", "warning")
         return redirect(url_for("campaigns.campaigns"))
 
-    _emailing_running = True
+    set_running("emailing", True)
 
     def _run():
-        global _emailing_running
         try:
             from src.outreach.email_sender import send_all_approved_email
 
@@ -247,7 +240,7 @@ def email_all_approved():
         except Exception as exc:
             logger.error("Bulk email send failed: %s", exc, exc_info=True)
         finally:
-            _emailing_running = False
+            set_running("emailing", False)
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()
@@ -380,3 +373,16 @@ def prospect_profile(prospect_id):
         intent=intent,
         score=score,
     )
+
+
+@campaigns_bp.route("/prospects/<int:prospect_id>/brief")
+def prospect_brief(prospect_id):
+    """Pre-meeting research brief assembled from stored data."""
+    from src.emails.briefing import build_brief
+
+    brief = build_brief(prospect_id)
+    if not brief:
+        flash("Prospect not found.", "error")
+        return redirect(url_for("prospects.prospects"))
+    audit("prospect.brief_view", "prospect", prospect_id, "")
+    return render_template("brief.html", brief=brief)

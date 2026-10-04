@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Brief — {{ brief.prospect.full_name or brief.prospect.email }}{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb -->
+<div class="flex items-center gap-2 text-xs text-slate-600 mb-4 animate-card">
+    <a href="/prospects" class="hover:text-slate-400 transition-colors">Prospects</a>
+    <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+    <a href="/prospects/{{ brief.prospect.id }}/profile" class="hover:text-slate-400 transition-colors">{{ brief.prospect.full_name or 'Profile' }}</a>
+    <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+    <span class="text-slate-400">Meeting brief</span>
+</div>
+
+<div class="flex items-start justify-between mb-6 animate-card">
+    <div>
+        <h1 class="text-2xl font-bold text-white tracking-tight">{{ brief.prospect.full_name or brief.prospect.email }}</h1>
+        <p class="text-slate-500 text-sm mt-1">
+            {% if brief.prospect.position %}{{ brief.prospect.position }} &bull; {% endif %}
+            {{ brief.prospect.company_name or '' }}
+            {% if brief.score %}<span class="ml-2 font-mono font-bold {% if brief.score.level == 'hot' %}text-orange-400{% elif brief.score.level == 'warm' %}text-amber-400{% else %}text-slate-400{% endif %}">{{ brief.score.score }}</span>{% endif %}
+        </p>
+    </div>
+    <button onclick="window.print()" class="btn-secondary !text-xs">Print</button>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+    <!-- Company facts -->
+    <div class="card animate-card">
+        <h2 class="text-sm font-semibold text-slate-200 mb-3">Company facts</h2>
+        {% if brief.company %}
+        <div class="space-y-2 text-xs">
+            <div class="flex justify-between py-1"><span class="text-slate-600">Legal name</span><span class="text-slate-300 text-right">{{ brief.company.name }}</span></div>
+            <div class="flex justify-between py-1"><span class="text-slate-600">Org number</span><span class="text-slate-300 font-mono">{{ brief.company.org_number }}</span></div>
+            {% if brief.company.employee_count %}<div class="flex justify-between py-1"><span class="text-slate-600">Employees</span><span class="text-slate-300 font-mono">{{ brief.company.employee_count }}</span></div>{% endif %}
+            {% if brief.company.nace_description %}<div class="flex justify-between py-1"><span class="text-slate-600">Industry</span><span class="text-slate-300 text-right">{{ brief.company.nace_description }}</span></div>{% endif %}
+            {% if brief.company.city %}<div class="flex justify-between py-1"><span class="text-slate-600">City</span><span class="text-slate-300">{{ brief.company.city }}</span></div>{% endif %}
+            {% if brief.company.website %}<div class="flex justify-between py-1"><span class="text-slate-600">Website</span><a href="https://{{ brief.company.website }}" target="_blank" class="text-blue-400 font-mono text-[11px]">{{ brief.company.website }}</a></div>{% endif %}
+        </div>
+        {% else %}
+        <p class="text-xs text-slate-600">No BRREG record linked yet — company facts come from the job posting and website scrape.</p>
+        <div class="mt-2 text-xs text-slate-400">{{ brief.prospect.company_domain or 'No domain known' }}</div>
+        {% endif %}
+        {% if brief.postings %}
+        <div class="mt-4 pt-3 border-t border-slate-800/60">
+            <div class="text-[10px] text-slate-600 font-semibold uppercase tracking-wider mb-2">Open roles tracked ({{ brief.postings | length }})</div>
+            {% for job in brief.postings %}
+            <a href="{{ job.url }}" target="_blank" class="block text-xs text-slate-300 hover:text-white truncate py-0.5">{{ job.title }}{% if job.location %} <span class="text-slate-600">· {{ job.location }}</span>{% endif %}</a>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Relationship -->
+    <div class="card animate-card" style="animation-delay: 60ms">
+        <h2 class="text-sm font-semibold text-slate-200 mb-3">Relationship so far</h2>
+        {% if brief.timeline %}
+        <div class="space-y-2">
+            {% for ev in brief.timeline %}
+            <div class="flex items-start gap-2.5 text-xs">
+                <span class="badge {% if ev.kind == 'clicked' %}badge-clicked{% elif ev.kind == 'opened' %}badge-opened{% else %}badge-sent{% endif %} flex-shrink-0 mt-0.5">{{ ev.kind }}</span>
+                <span class="text-slate-400 leading-relaxed">{{ ev.text }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-xs text-slate-600">No outreach yet — first touch pending.</p>
+        {% endif %}
+        {% if brief.prospect.current_stage %}
+        <div class="mt-3 pt-3 border-t border-slate-800/60 text-xs">
+            <span class="text-slate-600">CRM stage:</span>
+            <span class="text-slate-300 font-semibold ml-1">{{ brief.prospect.current_stage.stage if brief.prospect.current_stage.stage is defined else brief.prospect.current_stage }}</span>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Talking points -->
+<div class="card animate-card mt-5" style="animation-delay: 120ms">
+    <h2 class="text-sm font-semibold text-slate-200 mb-3">Talking points</h2>
+    <ul class="space-y-2.5">
+        {% for point in brief.talking_points %}
+        <li class="flex items-start gap-2.5 text-[13px] text-slate-300 leading-relaxed">
+            <svg class="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            {{ point }}
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+
+<!-- Next step -->
+<div class="card animate-card mt-5 !border-blue-500/30" style="animation-delay: 160ms">
+    <div class="flex items-start gap-3">
+        <div class="w-8 h-8 rounded-lg bg-blue-500/15 flex items-center justify-center flex-shrink-0">
+            <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/></svg>
+        </div>
+        <div>
+            <div class="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mb-1">Suggested next step</div>
+            <div class="text-sm text-slate-200">{{ brief.next_step }}</div>
+        </div>
+    </div>
+</div>
+{% endblock %}

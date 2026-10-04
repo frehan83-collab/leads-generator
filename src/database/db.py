@@ -1815,11 +1815,26 @@ def get_ab_test_groups() -> list[dict]:
             parent["variants"] = [dict(v) for v in variants]
             parent["variant_count"] = len(parent["variants"])
 
-            # Determine winner (highest open_count)
-            best = max(parent["variants"], key=lambda v: v.get("open_count") or 0)
-            parent["winner_id"] = (
-                best["id"] if (best.get("open_count") or 0) > 0 else None
+            # Winner: replies dominate, then clicks, then opens — and only
+            # with enough signal (min sample), otherwise no call yet.
+            def _variant_score(v: dict) -> int:
+                replies = 1 if v.get("replied_at") else 0
+                return (
+                    replies * 10
+                    + (v.get("click_count") or 0) * 3
+                    + (v.get("open_count") or 0)
+                )
+
+            total_signal = sum(
+                (v.get("open_count") or 0) + (v.get("click_count") or 0)
+                for v in parent["variants"]
             )
+            parent["signal_total"] = total_signal
+            if total_signal >= 3 and len(parent["variants"]) > 1:
+                best = max(parent["variants"], key=_variant_score)
+                parent["winner_id"] = best["id"] if _variant_score(best) > 0 else None
+            else:
+                parent["winner_id"] = None
 
             results.append(parent)
 

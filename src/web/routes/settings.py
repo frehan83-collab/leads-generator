@@ -8,14 +8,10 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 
 from src.database import db
 from src.web.auth import audit
+from src.web.jobstate import is_running, set_running, snapshot
 
 settings_bp = Blueprint("settings", __name__)
 logger = logging.getLogger(__name__)
-
-# Simple flags to prevent concurrent runs
-_pipeline_running = False
-_sending_running = False
-_emailing_running = False
 
 
 def _ensure_keywords_seeded():
@@ -64,10 +60,10 @@ def settings():
         snov_list_id=snov_list_id,
         snov_balance=snov_balance,
         recent_runs=recent_runs,
-        pipeline_running=_pipeline_running,
-        sending_running=_sending_running,
+        pipeline_running=snapshot()["pipeline"],
+        sending_running=snapshot()["sending"],
         resend_configured=resend_configured,
-        emailing_running=_emailing_running,
+        emailing_running=snapshot()["emailing"],
     )
 
 
@@ -112,15 +108,13 @@ def remove_keyword(keyword_id):
 
 @settings_bp.route("/settings/run-pipeline", methods=["POST"])
 def run_pipeline():
-    global _pipeline_running
-    if _pipeline_running:
+    if is_running("pipeline"):
         flash("Pipeline is already running. Please wait.", "warning")
         return redirect(url_for("settings.settings"))
 
-    _pipeline_running = True
+    set_running("pipeline", True)
 
     def _run():
-        global _pipeline_running
         try:
             from src.pipeline.lead_pipeline import LeadPipeline
 
@@ -140,7 +134,7 @@ def run_pipeline():
         except Exception as exc:
             logger.error("Manual pipeline run failed: %s", exc, exc_info=True)
         finally:
-            _pipeline_running = False
+            set_running("pipeline", False)
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()
@@ -155,21 +149,19 @@ def run_pipeline():
 @settings_bp.route("/settings/pipeline-status")
 def pipeline_status():
     """HTMX endpoint — returns current pipeline running status."""
-    return jsonify({"running": _pipeline_running})
+    return jsonify({"running": is_running("pipeline")})
 
 
 @settings_bp.route("/settings/send-now", methods=["POST"])
 def send_now():
     """Manually trigger sending all approved drafts to Snov.io."""
-    global _sending_running
-    if _sending_running:
+    if is_running("sending"):
         flash("Send job is already running. Please wait.", "warning")
         return redirect(url_for("settings.settings"))
 
-    _sending_running = True
+    set_running("sending", True)
 
     def _run():
-        global _sending_running
         try:
             from src.outreach.sender import send_approved_drafts
 
@@ -178,7 +170,7 @@ def send_now():
         except Exception as exc:
             logger.error("Manual send failed: %s", exc, exc_info=True)
         finally:
-            _sending_running = False
+            set_running("sending", False)
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()
@@ -190,21 +182,19 @@ def send_now():
 @settings_bp.route("/settings/send-status")
 def send_status():
     """HTMX endpoint — returns current send job running status."""
-    return jsonify({"running": _sending_running})
+    return jsonify({"running": is_running("sending")})
 
 
 @settings_bp.route("/settings/send-email-now", methods=["POST"])
 def send_email_now():
     """Manually trigger sending all approved drafts directly via Resend."""
-    global _emailing_running
-    if _emailing_running:
+    if is_running("emailing"):
         flash("Email send job is already running. Please wait.", "warning")
         return redirect(url_for("settings.settings"))
 
-    _emailing_running = True
+    set_running("emailing", True)
 
     def _run():
-        global _emailing_running
         try:
             from src.outreach.email_sender import send_all_approved_email
 
@@ -213,7 +203,7 @@ def send_email_now():
         except Exception as exc:
             logger.error("Manual Resend email send failed: %s", exc, exc_info=True)
         finally:
-            _emailing_running = False
+            set_running("emailing", False)
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()

@@ -30,6 +30,9 @@
         </div>
 
         <!-- Variant comparison cards -->
+        {% if not group.winner_id %}
+        <div class="mb-3 text-[11px] text-slate-600">Collecting data — a winner needs 3+ opens/clicks; replies count 10×, clicks 3×.</div>
+        {% endif %}
         <div class="grid grid-cols-1 md:grid-cols-{{ [group.variant_count, 3] | min }} gap-3">
             {% for variant in group.variants %}
             <div class="bg-surface-200/50 rounded-xl p-4 relative

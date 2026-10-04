@@ -43,9 +43,9 @@ class Settings:
         )
     )
     run_time: str = os.getenv("RUN_TIME", "09:30")
-    # Bounded parallel posting processing (1 = sequential, current default
-    # behaviour preserved; 2-4 recommended once Snov credits allow).
-    pipeline_workers: int = max(1, int(os.getenv("PIPELINE_WORKERS", "1")))
+    # Bounded parallel posting processing (2 default; each worker runs its
+    # own headless browser — 3-4 max on typical hardware).
+    pipeline_workers: int = min(4, max(1, int(os.getenv("PIPELINE_WORKERS", "2"))))
     # Max seconds spent on a single company domain (website + enrichment).
     domain_timeout_sec: int = int(os.getenv("DOMAIN_TIMEOUT_SEC", "300"))
     # Cap on company domains revisited per run by the careers source.

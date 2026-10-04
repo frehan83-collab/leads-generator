@@ -103,3 +103,16 @@ production-grade for unattended multi-user operation.
 - [ ] Production data note: `companies` table is empty (BRREG import never run)
   — run `import_brreg_companies.py` to unlock full v2 fit scoring; v2 degrades
   gracefully until then
+
+### World-class batch 2 — live ops, briefs, A/B loop
+- [x] Unified job state (`src/web/jobstate.py` — fixed split-brain flags:
+  campaigns and settings had separate `_sending_running` globals)
+- [x] Live run progress (`/api/run-progress` + dashboard auto-refresh strip);
+  stale-run detection (>12h “running” → `stale`, amber badge + CSS)
+- [x] Pre-meeting briefs (`src/emails/briefing.py` + `/brief` route + template:
+  company facts, open roles, relationship timeline, rule-based talking
+  points, stage-aware next step; audit-logged views)
+- [x] A/B winner upgrade (reply×10 + click×3 + opens, 3-signal minimum,
+  “collecting data” state instead of premature winners)
+- [x] `PIPELINE_WORKERS` default 1→2, hard-capped at 4
+- [x] 10 new tests; suite 185 → 195 green; ruff clean; runtime-verified live

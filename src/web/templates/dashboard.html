@@ -8,6 +8,50 @@
     <p class="text-slate-500 text-sm mt-1">Sperton recruitment pipeline overview</p>
 </div>
 
+<!-- Live background-job status (auto-refreshes) -->
+<div id="live-status" class="mb-6 hidden">
+    <div class="card !py-3 flex items-center gap-3">
+        <span id="live-dot" class="w-2 h-2 rounded-full bg-slate-600 flex-shrink-0"></span>
+        <span id="live-text" class="text-[13px] text-slate-300 font-medium"></span>
+        <span id="live-detail" class="text-[11px] text-slate-600 font-mono ml-auto"></span>
+    </div>
+</div>
+<script>
+async function refreshLiveStatus() {
+    try {
+        const res = await fetch('/api/run-progress');
+        if (!res.ok) return;
+        const d = await res.json();
+        const box = document.getElementById('live-status');
+        const dot = document.getElementById('live-dot');
+        const text = document.getElementById('live-text');
+        const detail = document.getElementById('live-detail');
+        const running = [];
+        if (d.jobs.pipeline) running.push('Pipeline running');
+        if (d.jobs.sending) running.push('Snov send running');
+        if (d.jobs.emailing) running.push('Email send running');
+        box.classList.remove('hidden');
+        if (running.length) {
+            dot.className = 'w-2 h-2 rounded-full bg-blue-400 animate-pulse flex-shrink-0';
+            text.textContent = running.join(' · ') + '…';
+            const r = d.latest_run;
+            detail.textContent = r ? `run started ${(r.started_at || '').slice(0, 16).replace('T', ' ')}` : '';
+        } else if (d.latest_run) {
+            const r = d.latest_run;
+            const color = r.status === 'completed' ? 'bg-emerald-500'
+                : r.status === 'stale' ? 'bg-amber-500' : 'bg-rose-500';
+            dot.className = 'w-2 h-2 rounded-full ' + color + ' flex-shrink-0';
+            text.textContent = r.status === 'stale' ? 'Last run stalled — safe to re-run' : `Last run: ${r.status}`;
+            detail.textContent = `${r.postings_new || 0} new postings · ${r.prospects_added || 0} prospects · ${r.drafts_created || 0} drafts · ${r.errors || 0} errors`;
+        } else {
+            box.classList.add('hidden');
+        }
+    } catch (e) { /* stay silent, retry next tick */ }
+}
+refreshLiveStatus();
+setInterval(refreshLiveStatus, 15000);
+</script>
+
 <!-- Hero KPI Cards -->
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
     <div class="stat-card animate-card">
