@@ -20,6 +20,13 @@
     <span class="badge badge-{{ draft.status }} !px-3 !py-1">{{ draft.status | capitalize }}</span>
 </div>
 
+{% if draft.job_posting_status == 'expired' %}
+<div class="mb-6 px-4 py-3 rounded-xl text-sm flex items-center gap-3 flash-warning animate-card">
+    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+    The linked job posting has expired — sending is blocked until the lead is refreshed against a live role.
+</div>
+{% endif %}
+
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
     <!-- Main: Email Preview & Edit -->
     <div class="lg:col-span-2 space-y-4 animate-card" style="animation-delay: 80ms">

@@ -47,6 +47,7 @@ python main.py --host 0.0.0.0 --port 8080
 | `PIPELINE_WORKERS` | `2` | parallel posting workers, capped at 4 |
 | `DOMAIN_TIMEOUT_SEC` | `300` | max seconds per company domain |
 | `CAREERS_MAX_DOMAINS` | `30` | known domains revisited per run by the careers source |
+| `REVALIDATE_LIMIT` / `REVALIDATE_MAX_AGE_DAYS` / `REVALIDATE_BUDGET_SEC` | `50` / `7` / `300` | per-run posting revalidation: how many, how stale, time budget |
 | `SNOV_MIN_CREDITS` | `0` | abort run below this balance (`0` = only when empty) |
 | `SNOV_LOW_WATER_CREDITS` | `200` | warn (+ webhook) when balance drops below this |
 | `SNOV_CLIENT_ID` / `SNOV_CLIENT_SECRET` | — | enrichment (required for prospects) |
@@ -68,6 +69,9 @@ Central defaults and validation live in `src/config.py`.
 
 - Follow-ups are created as **drafts awaiting approval** unless `FOLLOWUP_AUTO_SEND=true`.
 - `send_email_direct` refuses drafts that aren't `approved` **and** refuses already-sent drafts (double-send guard).
+- **Posting lifecycle**: each pipeline run re-checks stale ads (bounded). Expired
+  postings block both send paths and follow-up creation; intent/demand scoring
+  counts live postings only. Unknown is never treated as expired.
 - **Suppression list**: bounces and spam complaints (via Resend webhooks) permanently
   exclude addresses from both send paths; scheduled-for dates are honored by both.
 - Resend retries only transport errors and rate limits — never API rejections
@@ -77,7 +81,7 @@ Central defaults and validation live in `src/config.py`.
 ## Testing
 
 ```bash
-pytest tests/ -v                        # full suite (201 tests)
+pytest tests/ -v                        # full suite (213 tests)
 pytest tests/test_hardening.py -v       # security/safety regression tests
 pytest tests/test_pipeline_run.py -v    # mocked end-to-end pipeline runs
 ruff check src tests                    # lint (enforced in CI)

@@ -33,6 +33,12 @@ def create_follow_up_draft(
         logger.warning("Parent draft #%d not found", parent_draft_id)
         return None
 
+    if db.posting_is_expired(parent.get("job_posting_id")):
+        logger.info(
+            "Skipping follow-up for draft #%d: job posting expired", parent_draft_id
+        )
+        return None
+
     prospect = db.get_prospect_by_id(parent["prospect_id"])
     if not prospect:
         logger.warning("Prospect not found for parent draft #%d", parent_draft_id)

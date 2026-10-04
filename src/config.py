@@ -50,6 +50,10 @@ class Settings:
     domain_timeout_sec: int = int(os.getenv("DOMAIN_TIMEOUT_SEC", "300"))
     # Cap on company domains revisited per run by the careers source.
     careers_max_domains: int = int(os.getenv("CAREERS_MAX_DOMAINS", "30"))
+    # Posting revalidation per run (keeps campaigns tied to live ads).
+    revalidate_limit: int = int(os.getenv("REVALIDATE_LIMIT", "50"))
+    revalidate_max_age_days: int = int(os.getenv("REVALIDATE_MAX_AGE_DAYS", "7"))
+    revalidate_budget_sec: int = int(os.getenv("REVALIDATE_BUDGET_SEC", "300"))
 
     # -- Snov.io --------------------------------------------------------
     snov_client_id: str | None = os.getenv("SNOV_CLIENT_ID")

@@ -234,7 +234,8 @@ def _days_since_last_posting(domain: str) -> int | None:
     with db.get_connection() as conn:
         row = conn.execute(
             """SELECT MAX(scraped_at) FROM job_postings
-               WHERE LOWER(company_domain) = ?""",
+               WHERE LOWER(company_domain) = ?
+                 AND (status IS NULL OR status != 'expired')""",
             (domain,),
         ).fetchone()
     if not row or not row[0]:

@@ -72,6 +72,8 @@ class LeadPipeline:
             "emails_verified": 0,
             "prospects_added_to_snov": 0,
             "drafts_created": 0,
+            "postings_revalidated": 0,
+            "postings_expired": 0,
             "errors": 0,
         }
         self._stats_lock = threading.Lock()
@@ -146,6 +148,17 @@ class LeadPipeline:
                 )
             except Exception as exc:
                 logger.warning("Lead scoring v2 failed: %s", exc)
+
+            # Step 3c: Revalidate stale postings so campaigns track live ads
+            try:
+                re_stats = self._revalidate_postings()
+                logger.info(
+                    "Revalidated %d postings (%d expired)",
+                    re_stats["revalidated"],
+                    re_stats["expired"],
+                )
+            except Exception as exc:
+                logger.warning("Posting revalidation failed: %s", exc)
 
             # Step 4: Auto-export CSV
             csv_path = auto_export_after_run()
@@ -311,6 +324,8 @@ class LeadPipeline:
             "emails_verified": self._stats["emails_verified"],
             "prospects_added": self._stats["prospects_added_to_snov"],
             "drafts_created": self._stats["drafts_created"],
+            "postings_revalidated": self._stats["postings_revalidated"],
+            "postings_expired": self._stats["postings_expired"],
             "errors": self._stats["errors"],
         }
         if csv_path:
@@ -896,6 +911,49 @@ class LeadPipeline:
                         "notes": f"Auto-added from {posting.get('source', 'finn')} posting {posting.get('external_id', posting.get('finn_id', ''))}",
                     }
                 )
+
+    def _revalidate_postings(self) -> dict:
+        """Re-check liveness of stale postings (bounded by count + time).
+
+        Keeps campaign leads tied to actually-active ads: expired postings
+        are flagged so senders skip drafts that reference dead roles.
+        """
+        from src.config import settings as _settings
+        from src.scraper.revalidate import revalidate_one
+
+        queue = db.get_postings_for_revalidation(
+            limit=_settings.revalidate_limit,
+            older_than_days=_settings.revalidate_max_age_days,
+        )
+        deadline = time.monotonic() + _settings.revalidate_budget_sec
+        stats = {"revalidated": 0, "expired": 0}
+        for item in queue:
+            if time.monotonic() > deadline:
+                logger.info(
+                    "Revalidation budget spent, %d left for next run",
+                    len(queue) - stats["revalidated"],
+                )
+                break
+            if not item.get("url"):
+                db.update_job_posting(
+                    item["id"],
+                    {"status": "unknown", "last_checked_at": db._now()},
+                )
+                stats["revalidated"] += 1
+                continue
+            try:
+                outcome = revalidate_one(item["id"], item["url"], item.get("source"))
+            except Exception as exc:
+                logger.debug("Revalidate failed for posting #%d: %s", item["id"], exc)
+                continue
+            stats["revalidated"] += 1
+            if outcome == "expired":
+                stats["expired"] += 1
+                with self._stats_lock:
+                    self._stats["postings_expired"] += 1
+        with self._stats_lock:
+            self._stats["postings_revalidated"] += stats["revalidated"]
+        return stats
 
     def _calculate_intent_scores(self) -> None:
         """Calculate hiring intent scores for all companies with job postings."""

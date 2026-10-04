@@ -48,6 +48,7 @@ def send_approved_drafts() -> dict:
         "failed": 0,
         "skipped_suppressed": 0,
         "skipped_scheduled": 0,
+        "skipped_expired": 0,
         "errors": [],
     }
 
@@ -74,6 +75,10 @@ def send_approved_drafts() -> dict:
                 draft["id"],
                 draft.get("scheduled_for"),
             )
+            continue
+        if db.posting_is_expired(draft.get("job_posting_id")):
+            stats["skipped_expired"] += 1
+            logger.info("Skipping draft #%d: job posting expired", draft["id"])
             continue
         try:
             prospect = {

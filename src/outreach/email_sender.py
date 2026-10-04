@@ -93,6 +93,12 @@ def send_email_direct(draft_id: int) -> dict:
     if draft.get("sent_at"):
         return {"success": False, "error": "Draft already sent (double-send guard)"}
 
+    if db.posting_is_expired(draft.get("job_posting_id")):
+        return {
+            "success": False,
+            "error": "Job posting expired — refresh the lead against a live role first",
+        }
+
     if db.is_suppressed(draft.get("prospect_email") or ""):
         return {"success": False, "error": "Recipient is suppressed (bounce/complaint)"}
 

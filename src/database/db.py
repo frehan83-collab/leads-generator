@@ -62,6 +62,17 @@ _MIGRATIONS: list[tuple[str, str, str]] = [
         "org_number",
         "ALTER TABLE job_postings ADD COLUMN org_number TEXT",
     ),
+    # v9: posting lifecycle (active/expired/unknown + last check)
+    (
+        "job_postings",
+        "status",
+        "ALTER TABLE job_postings ADD COLUMN status TEXT DEFAULT 'unknown'",
+    ),
+    (
+        "job_postings",
+        "last_checked_at",
+        "ALTER TABLE job_postings ADD COLUMN last_checked_at TEXT",
+    ),
     # v4: Resend webhook tracking (F1)
     ("email_drafts", "resend_id", "ALTER TABLE email_drafts ADD COLUMN resend_id TEXT"),
     (
@@ -113,6 +124,18 @@ _MIGRATIONS: list[tuple[str, str, str]] = [
         "scheduled_for",
         "ALTER TABLE email_drafts ADD COLUMN scheduled_for TEXT",
     ),
+    # v9: posting lifecycle is declared above (job_postings status/last_checked_at)
+    # v10: pipeline run revalidation counters
+    (
+        "pipeline_runs",
+        "postings_revalidated",
+        "ALTER TABLE pipeline_runs ADD COLUMN postings_revalidated INTEGER DEFAULT 0",
+    ),
+    (
+        "pipeline_runs",
+        "postings_expired",
+        "ALTER TABLE pipeline_runs ADD COLUMN postings_expired INTEGER DEFAULT 0",
+    ),
 ]
 
 # Columns callers are allowed to update dynamically (SQL-injection guard).
@@ -152,6 +175,8 @@ _UPDATABLE_COLUMNS: dict[str, frozenset[str]] = {
             "emails_verified",
             "prospects_added",
             "drafts_created",
+            "postings_revalidated",
+            "postings_expired",
             "csv_path",
             "errors",
             "error_message",
@@ -180,6 +205,8 @@ _UPDATABLE_COLUMNS: dict[str, frozenset[str]] = {
             "url",
             "keyword_matched",
             "published_at",
+            "status",
+            "last_checked_at",
         }
     ),
 }
@@ -231,6 +258,8 @@ _SCHEMA = """
                 keyword_matched TEXT,
                 published_at    TEXT,
                 scraped_at      TEXT NOT NULL,
+                status          TEXT DEFAULT 'unknown',
+                last_checked_at TEXT,
                 UNIQUE(source, external_id)
             );
 
@@ -292,6 +321,8 @@ _SCHEMA = """
                 emails_verified     INTEGER DEFAULT 0,
                 prospects_added     INTEGER DEFAULT 0,
                 drafts_created      INTEGER DEFAULT 0,
+                postings_revalidated INTEGER DEFAULT 0,
+                postings_expired    INTEGER DEFAULT 0,
                 csv_path            TEXT,
                 errors              INTEGER DEFAULT 0,
                 error_message       TEXT
@@ -512,12 +543,13 @@ def insert_job_posting(data: dict) -> int | None:
     sql = """
         INSERT OR IGNORE INTO job_postings
             (source, external_id, title, company_name, company_domain, org_number,
-             location, url, keyword_matched, published_at, scraped_at)
+             location, url, keyword_matched, published_at, scraped_at, status)
         VALUES
             (:source, :external_id, :title, :company_name, :company_domain, :org_number,
-             :location, :url, :keyword_matched, :published_at, :scraped_at)
+             :location, :url, :keyword_matched, :published_at, :scraped_at, :status)
     """
     data.setdefault("source", "finn")
+    data.setdefault("status", "active")
     data.setdefault("org_number", None)
     data.setdefault("company_domain", None)
     data.setdefault("title", None)
@@ -826,7 +858,8 @@ def get_email_draft_by_id(draft_id: int) -> dict | None:
                       p.first_name, p.last_name,
                       p.position as prospect_title,
                       p.company_name, p.company_domain,
-                      jp.title as job_title, jp.location as job_location, jp.url as job_url
+                      jp.title as job_title, jp.location as job_location, jp.url as job_url,
+                      jp.status as job_posting_status
                FROM email_drafts ed
                JOIN prospects p ON ed.prospect_id = p.id
                LEFT JOIN job_postings jp ON ed.job_posting_id = jp.id
@@ -864,7 +897,7 @@ def get_approved_drafts_with_prospects() -> list[dict]:
     """Return all approved drafts with prospect data needed for Snov enrollment."""
     with get_connection() as conn:
         rows = conn.execute("""
-            SELECT ed.id, ed.prospect_id, ed.subject, ed.body, ed.scheduled_for,
+            SELECT ed.id, ed.prospect_id, ed.job_posting_id, ed.subject, ed.body, ed.scheduled_for,
                    p.email as prospect_email,
                    p.first_name, p.last_name,
                    p.full_name as prospect_name,
@@ -1721,6 +1754,35 @@ def get_domains_for_career_scan(limit: int = 30, since_days: int = 90) -> list[d
     return [dict(r) for r in rows]
 
 
+def get_postings_for_revalidation(
+    limit: int = 50, older_than_days: int = 7
+) -> list[dict]:
+    """Postings whose liveness is stale: never checked, or not checked
+    recently. Expired ones are excluded (already decided). Oldest first."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT id, url, source, status FROM job_postings
+               WHERE (status IS NULL OR status != 'expired')
+                 AND (last_checked_at IS NULL
+                      OR replace(last_checked_at, 'T', ' ') < datetime('now', ?))
+               ORDER BY last_checked_at ASC NULLS FIRST, scraped_at ASC
+               LIMIT ?""",
+            (f"-{older_than_days} days", limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def posting_is_expired(job_posting_id: int | None) -> bool:
+    """True only for positively-expired postings. Unknown/None never blocks."""
+    if not job_posting_id:
+        return False
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT status FROM job_postings WHERE id = ?", (job_posting_id,)
+        ).fetchone()
+    return bool(row) and row[0] == "expired"
+
+
 def get_linkedin_stats() -> dict:
     """Aggregate LinkedIn outreach stats."""
     with get_connection() as conn:
@@ -2013,24 +2075,25 @@ def get_company_intent_signals(domain: str) -> dict:
     Matches case-insensitively: posting domains are stored as scraped.
     """
     domain = (domain or "").lower()
+    live = "(status IS NULL OR status != 'expired')"
     with get_connection() as conn:
         # Count total job postings
         total = conn.execute(
-            "SELECT COUNT(*) FROM job_postings WHERE LOWER(company_domain) = ?",
+            f"SELECT COUNT(*) FROM job_postings WHERE LOWER(company_domain) = ? AND {live}",
             (domain,),
         ).fetchone()[0]
 
         # Recent postings (last 30 days)
         recent = conn.execute(
-            """SELECT COUNT(*) FROM job_postings
-               WHERE LOWER(company_domain) = ? AND scraped_at >= date('now', '-30 days')""",
+            f"""SELECT COUNT(*) FROM job_postings
+               WHERE LOWER(company_domain) = ? AND scraped_at >= date('now', '-30 days') AND {live}""",
             (domain,),
         ).fetchone()[0]
 
         # Unique keywords
         keywords = conn.execute(
-            """SELECT DISTINCT keyword_matched FROM job_postings
-               WHERE LOWER(company_domain) = ? AND keyword_matched IS NOT NULL""",
+            f"""SELECT DISTINCT keyword_matched FROM job_postings
+               WHERE LOWER(company_domain) = ? AND keyword_matched IS NOT NULL AND {live}""",
             (domain,),
         ).fetchall()
 

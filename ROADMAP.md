@@ -129,3 +129,15 @@ production-grade for unattended multi-user operation.
   (AquaGen 40/40)
 - [x] Recent-exports listing on settings page
 - [x] 6 new tests; suite 195 → 201 green; ruff clean
+
+### World-class batch 4 — posting lifecycle (campaigns track live ads)
+- [x] `status` (`active`/`expired`/`unknown`) + `last_checked_at` on postings;
+  fresh scrapes are `active`, legacy rows `unknown`; v9 migration
+- [x] Conservative revalidator (`src/scraper/revalidate.py`): 404/410 + explicit
+  expired markers only; blocks/unknowns never flip a live ad
+- [x] Bounded pipeline step (count + age + time budget) with run stats
+  (`postings_revalidated`, `postings_expired`; v10 migration)
+- [x] Send guards: both senders + follow-up creation refuse expired-posting
+  drafts; draft-detail banner; brief status dots
+- [x] Intent/demand/counts exclude expired postings
+- [x] 12 new tests; ruff clean

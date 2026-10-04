@@ -43,7 +43,7 @@ def _company_postings(domain: str, limit: int = 5) -> list[dict]:
 
     with db.get_connection() as conn:
         rows = conn.execute(
-            """SELECT title, location, url, published_at, scraped_at, source
+            """SELECT title, location, url, published_at, scraped_at, source, status
                FROM job_postings WHERE company_domain = ?
                ORDER BY scraped_at DESC LIMIT ?""",
             (domain, limit),
