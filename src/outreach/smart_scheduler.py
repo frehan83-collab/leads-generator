@@ -10,7 +10,7 @@ Factors:
 
 import logging
 import random
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +22,9 @@ SECONDARY_START = 13
 SECONDARY_END = 15
 
 # Best days for B2B outreach (0=Monday, 4=Friday)
-BEST_DAYS = [1, 2, 3]       # Tue, Wed, Thu
-OK_DAYS = [0, 4]             # Mon, Fri
-AVOID_DAYS = [5, 6]          # Sat, Sun
+BEST_DAYS = [1, 2, 3]  # Tue, Wed, Thu
+OK_DAYS = [0, 4]  # Mon, Fri
+AVOID_DAYS = [5, 6]  # Sat, Sun
 
 
 def calculate_optimal_send_time(
@@ -38,7 +38,7 @@ def calculate_optimal_send_time(
     Targets Norwegian business hours with randomization.
     """
     if base_time is None:
-        base_time = datetime.now(timezone.utc)
+        base_time = datetime.now(UTC)
 
     # CET offset (simplified: +1 for winter, +2 for summer)
     # Norway uses CET (UTC+1) / CEST (UTC+2)
@@ -67,7 +67,7 @@ def calculate_optimal_send_time(
     )
     # Subtract CET offset to get UTC
     send_time_utc = send_time - timedelta(hours=cet_offset)
-    send_time_utc = send_time_utc.replace(tzinfo=timezone.utc)
+    send_time_utc = send_time_utc.replace(tzinfo=UTC)
 
     # Ensure it's in the future
     if send_time_utc <= base_time:
@@ -78,7 +78,7 @@ def calculate_optimal_send_time(
             datetime.min.time().replace(hour=target_hour, minute=target_minute),
         )
         send_time_utc = send_time - timedelta(hours=cet_offset)
-        send_time_utc = send_time_utc.replace(tzinfo=timezone.utc)
+        send_time_utc = send_time_utc.replace(tzinfo=UTC)
 
     logger.debug(
         "Scheduled send for %s (Norwegian time: %02d:%02d)",

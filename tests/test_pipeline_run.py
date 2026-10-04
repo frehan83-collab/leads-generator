@@ -6,15 +6,14 @@ zero-balance guard, and the bounded parallel path.
 
 import dataclasses
 import os
+from unittest.mock import MagicMock
 
 import pytest
-from unittest.mock import patch, MagicMock
 
 import src.database.db as db_module
 from src.config import Settings
 from src.pipeline.lead_pipeline import LeadPipeline
 from src.snov.errors import SnovOutOfCredits
-
 
 POSTING = {
     "source": "finn",
@@ -53,7 +52,9 @@ def pipe(monkeypatch, tmp_path, request):
         "src.pipeline.lead_pipeline.scrape_finn",
         lambda keywords, known_ids=None, browser=None: [dict(POSTING)],
     )
-    monkeypatch.setattr(LeadPipeline, "_resolve_domain", lambda self, *a, **k: "acme.no")
+    monkeypatch.setattr(
+        LeadPipeline, "_resolve_domain", lambda self, *a, **k: "acme.no"
+    )
     monkeypatch.setattr(LeadPipeline, "_enrich_with_brreg", lambda self, *a, **k: None)
     monkeypatch.setattr(
         "src.pipeline.lead_pipeline.auto_draft_for_new_prospect", lambda *a, **k: 99
@@ -103,7 +104,8 @@ def test_snov_fallback_when_website_empty(pipe, monkeypatch):
         {"first_name": "Kari", "last_name": "Nordmann", "position": "CEO"}
     ]
     pipe.snov.find_email_by_name_domain.return_value = {
-        "email": "kari@acme.no", "smtp_status": "valid",
+        "email": "kari@acme.no",
+        "smtp_status": "valid",
     }
     stats = pipe.run(["seafood"])
     assert stats["emails_verified"] == 1
@@ -116,6 +118,22 @@ def test_zero_balance_aborts_run(pipe):
     with pytest.raises(SnovOutOfCredits):
         pipe.run(["seafood"])
     assert _last_run()["status"] == "failed"
+
+
+def test_low_water_warns_but_continues(pipe, monkeypatch, caplog):
+    import logging
+
+    monkeypatch.delenv("WEBHOOK_URL", raising=False)
+    pipe.snov.get_balance.return_value = {"data": {"balance": 150}}
+    monkeypatch.setattr(
+        "src.pipeline.lead_pipeline.scrape_emails_from_website",
+        lambda *a, **k: [{"email": "a@acme.no", "title": "", "name": ""}],
+    )
+    with caplog.at_level(logging.WARNING):
+        stats = pipe.run(["seafood"])
+    assert stats["postings_new"] == 1
+    assert _last_run()["status"] == "completed"
+    assert any("balance low" in r.message for r in caplog.records)
 
 
 def test_fatal_snov_error_fails_run(pipe, monkeypatch):
@@ -134,8 +152,12 @@ def test_fatal_snov_error_fails_run(pipe, monkeypatch):
 @pytest.mark.parametrize("pipe", [2], indirect=True)
 def test_parallel_workers_same_result(pipe, monkeypatch):
     postings = [
-        dict(POSTING, external_id=f"fin{i}", url=f"https://finn.no/job/ad/{i}",
-             company_name=f"Acme{i} AS")
+        dict(
+            POSTING,
+            external_id=f"fin{i}",
+            url=f"https://finn.no/job/ad/{i}",
+            company_name=f"Acme{i} AS",
+        )
         for i in range(4)
     ]
     monkeypatch.setattr(
@@ -143,7 +165,8 @@ def test_parallel_workers_same_result(pipe, monkeypatch):
         lambda keywords, known_ids=None, browser=None: postings,
     )
     monkeypatch.setattr(
-        LeadPipeline, "_resolve_domain",
+        LeadPipeline,
+        "_resolve_domain",
         lambda self, name, posting, **k: f"{name.split()[0].lower()}.no",
     )
     inboxes = [

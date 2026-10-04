@@ -1,10 +1,10 @@
 """Settings page — keywords config, Snov balance, manual pipeline trigger."""
 
+import logging
 import os
 import threading
-import logging
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
+from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 
 from src.database import db
 
@@ -19,7 +19,10 @@ _emailing_running = False
 
 def _ensure_keywords_seeded():
     """On first load, seed the keywords table from .env if it's empty."""
-    env_raw = os.getenv("FINN_KEYWORDS", "seafood,aquaculture,biologi,fiske og fangst,oppdrett,akvakultur,smolt,RAS,fiskehelse,røkter,IK-mat,driftsleder,lokalitetssjef,eksport,matfisk,produksjon,foredling")
+    env_raw = os.getenv(
+        "FINN_KEYWORDS",
+        "seafood,aquaculture,biologi,fiske og fangst,oppdrett,akvakultur,smolt,RAS,fiskehelse,røkter,IK-mat,driftsleder,lokalitetssjef,eksport,matfisk,produksjon,foredling",
+    )
     env_keywords = [k.strip() for k in env_raw.split(",") if k.strip()]
     db.seed_keywords_from_env(env_keywords)
 
@@ -36,6 +39,7 @@ def settings():
     snov_balance = None
     try:
         from src.snov.client import SnovClient
+
         snov = SnovClient()
         bal = snov.get_balance()
         data = bal.get("data") or bal
@@ -83,7 +87,10 @@ def add_keyword():
                 added.append(kw)
 
     if added:
-        flash(f"Added keyword{'s' if len(added) > 1 else ''}: {', '.join(added)}", "success")
+        flash(
+            f"Added keyword{'s' if len(added) > 1 else ''}: {', '.join(added)}",
+            "success",
+        )
     else:
         flash("No new keywords to add.", "info")
 
@@ -113,12 +120,15 @@ def run_pipeline():
         global _pipeline_running
         try:
             from src.pipeline.lead_pipeline import LeadPipeline
+
             _ensure_keywords_seeded()
             keywords = db.get_keyword_list()
             if not keywords:
                 keywords = [
                     k.strip()
-                    for k in os.getenv("FINN_KEYWORDS", "seafood,aquaculture").split(",")
+                    for k in os.getenv("FINN_KEYWORDS", "seafood,aquaculture").split(
+                        ","
+                    )
                     if k.strip()
                 ]
             snov_list_id = os.getenv("SNOV_LIST_ID")
@@ -132,7 +142,10 @@ def run_pipeline():
     t = threading.Thread(target=_run, daemon=True)
     t.start()
 
-    flash("Pipeline started in the background. Check the activity feed for progress.", "success")
+    flash(
+        "Pipeline started in the background. Check the activity feed for progress.",
+        "success",
+    )
     return redirect(url_for("settings.settings"))
 
 
@@ -156,6 +169,7 @@ def send_now():
         global _sending_running
         try:
             from src.outreach.sender import send_approved_drafts
+
             stats = send_approved_drafts()
             logger.info("Manual send complete: %s", stats)
         except Exception as exc:
@@ -190,6 +204,7 @@ def send_email_now():
         global _emailing_running
         try:
             from src.outreach.email_sender import send_all_approved_email
+
             stats = send_all_approved_email()
             logger.info("Manual Resend email send complete: %s", stats)
         except Exception as exc:

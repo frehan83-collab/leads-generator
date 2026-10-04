@@ -2,9 +2,7 @@
 Tests for pipeline enhancements: fuzzy matching, date parsing, incremental scraping.
 """
 
-import pytest
-from unittest.mock import patch, MagicMock
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 
 from src.scraper.finn_scraper import _parse_relative_date
 
@@ -14,44 +12,52 @@ class TestParseRelativeDate:
 
     def test_i_dag(self):
         result = _parse_relative_date("i dag")
-        expected = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d")
+        expected = datetime.now(UTC).replace(tzinfo=None).strftime("%Y-%m-%d")
         assert result == expected
 
     def test_today(self):
         result = _parse_relative_date("today")
-        expected = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d")
+        expected = datetime.now(UTC).replace(tzinfo=None).strftime("%Y-%m-%d")
         assert result == expected
 
     def test_i_gar(self):
         result = _parse_relative_date("i går")
-        expected = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)).strftime("%Y-%m-%d")
+        expected = (
+            datetime.now(UTC).replace(tzinfo=None) - timedelta(days=1)
+        ).strftime("%Y-%m-%d")
         assert result == expected
 
     def test_yesterday(self):
         result = _parse_relative_date("yesterday")
-        expected = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)).strftime("%Y-%m-%d")
+        expected = (
+            datetime.now(UTC).replace(tzinfo=None) - timedelta(days=1)
+        ).strftime("%Y-%m-%d")
         assert result == expected
 
     def test_dager_siden(self):
         result = _parse_relative_date("3 dager siden")
-        expected = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=3)).strftime("%Y-%m-%d")
+        expected = (
+            datetime.now(UTC).replace(tzinfo=None) - timedelta(days=3)
+        ).strftime("%Y-%m-%d")
         assert result == expected
 
     def test_dager_siden_singular(self):
         """'1 dager siden' matches the regex pattern dager?."""
         result = _parse_relative_date("1 dager siden")
-        expected = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)).strftime("%Y-%m-%d")
+        expected = (
+            datetime.now(UTC).replace(tzinfo=None) - timedelta(days=1)
+        ).strftime("%Y-%m-%d")
         assert result == expected
 
     def test_timer_siden(self):
         """Hours ago should resolve to today."""
         result = _parse_relative_date("5 timer siden")
-        expected = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d")
+        expected = datetime.now(UTC).replace(tzinfo=None).strftime("%Y-%m-%d")
         assert result == expected
 
     def test_time_siden_singular(self):
         result = _parse_relative_date("1 time siden")
-        expected = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d")
+        expected = datetime.now(UTC).replace(tzinfo=None).strftime("%Y-%m-%d")
         assert result == expected
 
     def test_dd_mm_yyyy(self):
@@ -72,7 +78,7 @@ class TestParseRelativeDate:
 
     def test_whitespace_trimmed(self):
         result = _parse_relative_date("  i dag  ")
-        expected = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d")
+        expected = datetime.now(UTC).replace(tzinfo=None).strftime("%Y-%m-%d")
         assert result == expected
 
 
@@ -139,6 +145,7 @@ class TestCleanCompanyName:
 
     def setup_method(self):
         from src.pipeline.lead_pipeline import LeadPipeline
+
         self.clean = LeadPipeline._clean_company_name
 
     def test_strip_as_suffix(self):

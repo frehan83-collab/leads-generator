@@ -3,19 +3,23 @@ Tests for Snov.io client.
 All HTTP calls are mocked — no real API calls are made.
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from src.snov.client import SnovClient
-from src.snov.errors import SnovError, SnovAuthError, SnovOutOfCredits
+from src.snov.errors import SnovAuthError, SnovError, SnovOutOfCredits
 
 
 @pytest.fixture
 def client():
-    with patch.dict("os.environ", {
-        "SNOV_CLIENT_ID": "test_client_id",
-        "SNOV_CLIENT_SECRET": "test_client_secret",
-    }):
+    with patch.dict(
+        "os.environ",
+        {
+            "SNOV_CLIENT_ID": "test_client_id",
+            "SNOV_CLIENT_SECRET": "test_client_secret",
+        },
+    ):
         c = SnovClient()
         # Pre-set a fake token so we skip the auth call
         c._access_token = "fake_token"
@@ -33,9 +37,9 @@ def mock_response(data: dict, status_code: int = 200):
 
 def test_get_balance(client):
     with patch("requests.get") as mock_get:
-        mock_get.return_value = mock_response({
-            "data": {"balance": 500, "recipients_used": 10}
-        })
+        mock_get.return_value = mock_response(
+            {"data": {"balance": 500, "recipients_used": 10}}
+        )
         result = client.get_balance()
         assert result["data"]["balance"] == 500
 
@@ -43,10 +47,12 @@ def test_get_balance(client):
 def test_find_domain_by_company_name(client):
     with patch("requests.post") as mock_post, patch("requests.get") as mock_get:
         mock_post.return_value = mock_response({"data": {"task_hash": "abc123"}})
-        mock_get.return_value = mock_response({
-            "status": "complete",
-            "data": [{"company": "AquaCorp", "domain": "aquacorp.no"}],
-        })
+        mock_get.return_value = mock_response(
+            {
+                "status": "complete",
+                "data": [{"company": "AquaCorp", "domain": "aquacorp.no"}],
+            }
+        )
         domain = client.find_domain_by_company_name("AquaCorp")
         assert domain == "aquacorp.no"
 
@@ -62,10 +68,12 @@ def test_find_domain_returns_none_on_empty(client):
 def test_find_email_by_name_domain(client):
     with patch("requests.post") as mock_post, patch("requests.get") as mock_get:
         mock_post.return_value = mock_response({"data": {"task_hash": "xyz789"}})
-        mock_get.return_value = mock_response({
-            "status": "complete",
-            "data": [{"email": "kari@aquacorp.no", "smtp_status": "valid"}],
-        })
+        mock_get.return_value = mock_response(
+            {
+                "status": "complete",
+                "data": [{"email": "kari@aquacorp.no", "smtp_status": "valid"}],
+            }
+        )
         result = client.find_email_by_name_domain("Kari", "Nordmann", "aquacorp.no")
         assert result is not None
         assert result["email"] == "kari@aquacorp.no"
@@ -75,10 +83,12 @@ def test_find_email_by_name_domain(client):
 def test_verify_email(client):
     with patch("requests.post") as mock_post, patch("requests.get") as mock_get:
         mock_post.return_value = mock_response({"data": {"task_hash": "ver123"}})
-        mock_get.return_value = mock_response({
-            "status": "complete",
-            "data": [{"email": "test@corp.no", "smtp_status": "valid"}],
-        })
+        mock_get.return_value = mock_response(
+            {
+                "status": "complete",
+                "data": [{"email": "test@corp.no", "smtp_status": "valid"}],
+            }
+        )
         status = client.verify_email("test@corp.no")
         assert status == "valid"
 
@@ -93,18 +103,22 @@ def test_get_domain_email_count(client):
 def test_add_prospect_to_list(client):
     with patch("requests.post") as mock_post:
         mock_post.return_value = mock_response({"added": True})
-        result = client.add_prospect_to_list("list_001", {
-            "email": "ole@aquacorp.no",
-            "first_name": "Ole",
-            "last_name": "Hansen",
-            "position": "CEO",
-            "company_name": "AquaCorp",
-            "company_domain": "aquacorp.no",
-        })
+        result = client.add_prospect_to_list(
+            "list_001",
+            {
+                "email": "ole@aquacorp.no",
+                "first_name": "Ole",
+                "last_name": "Hansen",
+                "position": "CEO",
+                "company_name": "AquaCorp",
+                "company_domain": "aquacorp.no",
+            },
+        )
         assert result is True
 
 
 # --- typed errors: fatal problems raise, transient ones degrade --------
+
 
 def test_402_raises_out_of_credits(client):
     with patch("requests.post") as mock_post:
@@ -146,7 +160,12 @@ def test_public_method_reraises_fatal(client):
 
 def test_public_method_returns_none_on_transient(client):
     import requests
-    with patch.object(client, "_post", side_effect=requests.exceptions.ConnectionError("down")):
+
+    with patch.object(
+        client, "_post", side_effect=requests.exceptions.ConnectionError("down")
+    ):
         assert client.find_domain_by_company_name("AquaCorp") is None
-    with patch.object(client, "_post", side_effect=requests.exceptions.ConnectionError("down")):
+    with patch.object(
+        client, "_post", side_effect=requests.exceptions.ConnectionError("down")
+    ):
         assert client.get_prospects_by_domain("aquacorp.no") == []

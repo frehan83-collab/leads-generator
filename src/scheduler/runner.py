@@ -39,6 +39,7 @@ def run_send_job() -> None:
     logger.info("Scheduled send job triggered")
     try:
         from src.outreach.sender import send_approved_drafts
+
         stats = send_approved_drafts()
         logger.info("Send job finished: %s", stats)
     except Exception as exc:
@@ -47,6 +48,7 @@ def run_send_job() -> None:
     # F3: Check and send follow-ups for emails with no opens
     try:
         from src.outreach.follow_up_checker import check_and_create_followups
+
         fu_stats = check_and_create_followups()
         logger.info("Follow-up check finished: %s", fu_stats)
     except Exception as exc:

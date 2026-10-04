@@ -1,12 +1,20 @@
 """Job postings page — searchable/filterable table with CSV, Excel and PDF export."""
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, Response, jsonify
+from flask import (
+    Blueprint,
+    Response,
+    flash,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 
 from src.database import db
 from src.export.csv_exporter import (
-    stream_postings_csv,
-    build_postings_xlsx,
     build_postings_pdf,
+    build_postings_xlsx,
+    stream_postings_csv,
 )
 
 postings_bp = Blueprint("postings", __name__)
@@ -89,10 +97,15 @@ def delete_postings():
         return redirect(url_for("postings.postings"))
 
     deleted = db.delete_job_postings(posting_ids)
-    flash(f"Deleted {deleted} posting{'s' if deleted != 1 else ''} and related prospects/drafts.", "success")
+    flash(
+        f"Deleted {deleted} posting{'s' if deleted != 1 else ''} and related prospects/drafts.",
+        "success",
+    )
 
     # Preserve current filters when redirecting back
     search = request.form.get("search", "")
     keyword = request.form.get("keyword", "")
     page = request.form.get("page", "1")
-    return redirect(url_for("postings.postings", search=search, keyword=keyword, page=page))
+    return redirect(
+        url_for("postings.postings", search=search, keyword=keyword, page=page)
+    )

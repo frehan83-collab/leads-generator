@@ -2,10 +2,9 @@
 Tests for the BrowserManager shared browser lifecycle manager.
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
 
-from src.scraper.browser_manager import BrowserManager, USER_AGENT
+from src.scraper.browser_manager import USER_AGENT, BrowserManager
 
 
 class TestBrowserManager:
@@ -40,7 +39,7 @@ class TestBrowserManager:
         mock_sync_pw.return_value = mock_cm
 
         with patch.dict("os.environ", {"PROXY_URL": "http://proxy:8080"}):
-            with BrowserManager() as bm:
+            with BrowserManager():
                 pass
 
         call_kwargs = mock_pw.chromium.launch.call_args[1]
@@ -60,7 +59,7 @@ class TestBrowserManager:
         mock_sync_pw.return_value = mock_cm
 
         with BrowserManager() as bm:
-            ctx = bm.new_context()
+            bm.new_context()
 
         call_kwargs = mock_browser.new_context.call_args[1]
         assert call_kwargs["user_agent"] == USER_AGENT
@@ -80,7 +79,7 @@ class TestBrowserManager:
         mock_sync_pw.return_value = mock_cm
 
         with BrowserManager() as bm:
-            ctx = bm.new_context(locale="en-US", viewport={"width": 800, "height": 600})
+            bm.new_context(locale="en-US", viewport={"width": 800, "height": 600})
 
         call_kwargs = mock_browser.new_context.call_args[1]
         assert call_kwargs["locale"] == "en-US"  # overridden

@@ -1,7 +1,8 @@
 """CRM Pipeline — Kanban board for prospect journey tracking."""
 
 import logging
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
+
+from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from src.database import db
 

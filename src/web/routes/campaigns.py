@@ -1,11 +1,11 @@
 """Campaigns page — review, edit, approve, and send email drafts."""
 
+import logging
 import os
 import threading
-import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from src.database import db
 from src.emails.drafter import regenerate_draft
@@ -82,10 +82,13 @@ def approve(draft_id):
         flash("Draft not found.", "error")
         return redirect(url_for("campaigns.campaigns"))
 
-    db.update_email_draft(draft_id, {
-        "status": "approved",
-        "approved_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
-    })
+    db.update_email_draft(
+        draft_id,
+        {
+            "status": "approved",
+            "approved_at": datetime.now(UTC).replace(tzinfo=None).isoformat(),
+        },
+    )
     flash(f"Draft approved for {draft.get('prospect_email', '')}", "success")
     return redirect(request.referrer or url_for("campaigns.campaigns"))
 
@@ -99,7 +102,9 @@ def edit(draft_id):
         flash("Subject and body are required.", "error")
         return redirect(url_for("campaigns.draft_detail", draft_id=draft_id))
 
-    db.update_email_draft(draft_id, {"subject": subject, "body": body, "status": "draft"})
+    db.update_email_draft(
+        draft_id, {"subject": subject, "body": body, "status": "draft"}
+    )
     flash("Draft updated.", "success")
     return redirect(url_for("campaigns.draft_detail", draft_id=draft_id))
 
@@ -129,6 +134,7 @@ def send_all_approved():
         global _sending_running
         try:
             from src.outreach.sender import send_approved_drafts
+
             send_approved_drafts()
         except Exception as exc:
             logger.error("Bulk send failed: %s", exc, exc_info=True)
@@ -174,15 +180,17 @@ def send_single(draft_id):
         added = snov.add_prospect_to_list(snov_list_id, prospect)
 
         if added:
-            now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+            now = datetime.now(UTC).replace(tzinfo=None).isoformat()
             db.update_email_draft(draft_id, {"status": "sent", "sent_at": now})
-            db.log_outreach({
-                "prospect_id": draft["prospect_id"],
-                "campaign_id": snov_list_id,
-                "status": "sent_to_snov",
-                "sent_at": now,
-                "notes": f"Manual send of draft #{draft_id}",
-            })
+            db.log_outreach(
+                {
+                    "prospect_id": draft["prospect_id"],
+                    "campaign_id": snov_list_id,
+                    "status": "sent_to_snov",
+                    "sent_at": now,
+                    "notes": f"Manual send of draft #{draft_id}",
+                }
+            )
             flash(f"Sent to Snov.io: {draft['prospect_email']}", "success")
         else:
             flash(f"Snov.io did not accept {draft['prospect_email']}.", "error")
@@ -204,7 +212,10 @@ def send_email_single(draft_id):
 
     result = send_email_direct(draft_id)
     if result["success"]:
-        flash(f"Email sent directly to prospect (Resend ID: {result.get('resend_id', 'ok')})", "success")
+        flash(
+            f"Email sent directly to prospect (Resend ID: {result.get('resend_id', 'ok')})",
+            "success",
+        )
     else:
         flash(f"Email send failed: {result['error']}", "error")
 
@@ -225,6 +236,7 @@ def email_all_approved():
         global _emailing_running
         try:
             from src.outreach.email_sender import send_all_approved_email
+
             stats = send_all_approved_email()
             logger.info("Bulk Resend email complete: %s", stats)
         except Exception as exc:
@@ -240,17 +252,20 @@ def email_all_approved():
 
 # ── LinkedIn outreach routes (F4) ─────────────────────────────────────
 
+
 @campaigns_bp.route("/campaigns/<int:draft_id>/linkedin-copied", methods=["POST"])
 def linkedin_copied(draft_id):
     """Mark LinkedIn message as copied."""
     msg = db.get_linkedin_message_by_draft(draft_id)
     if msg:
-        now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+        now = datetime.now(UTC).replace(tzinfo=None).isoformat()
         db.update_linkedin_message(msg["id"], {"status": "copied", "copied_at": now})
         flash("LinkedIn message marked as copied.", "success")
     else:
         flash("LinkedIn message not found.", "error")
-    return redirect(request.referrer or url_for("campaigns.draft_detail", draft_id=draft_id))
+    return redirect(
+        request.referrer or url_for("campaigns.draft_detail", draft_id=draft_id)
+    )
 
 
 @campaigns_bp.route("/campaigns/<int:draft_id>/linkedin-sent", methods=["POST"])
@@ -258,12 +273,14 @@ def linkedin_sent(draft_id):
     """Mark LinkedIn message as sent."""
     msg = db.get_linkedin_message_by_draft(draft_id)
     if msg:
-        now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+        now = datetime.now(UTC).replace(tzinfo=None).isoformat()
         db.update_linkedin_message(msg["id"], {"status": "sent", "sent_at": now})
         flash("LinkedIn message marked as sent.", "success")
     else:
         flash("LinkedIn message not found.", "error")
-    return redirect(request.referrer or url_for("campaigns.draft_detail", draft_id=draft_id))
+    return redirect(
+        request.referrer or url_for("campaigns.draft_detail", draft_id=draft_id)
+    )
 
 
 @campaigns_bp.route("/campaigns/linkedin")
@@ -295,7 +312,10 @@ def linkedin_list():
 
 # ── AI variant swap route (F5) ────────────────────────────────────────
 
-@campaigns_bp.route("/campaigns/<int:draft_id>/use-variant/<int:variant_id>", methods=["POST"])
+
+@campaigns_bp.route(
+    "/campaigns/<int:draft_id>/use-variant/<int:variant_id>", methods=["POST"]
+)
 def use_variant(draft_id, variant_id):
     """Swap draft content with a variant."""
     draft = db.get_email_draft_by_id(draft_id)
@@ -306,18 +326,22 @@ def use_variant(draft_id, variant_id):
         return redirect(url_for("campaigns.draft_detail", draft_id=draft_id))
 
     # Swap the content
-    db.update_email_draft(draft_id, {
-        "subject": variant["subject"],
-        "body": variant["body"],
-        "template_name": variant.get("template_name", draft["template_name"]),
-        "ai_context": variant.get("ai_context"),
-    })
+    db.update_email_draft(
+        draft_id,
+        {
+            "subject": variant["subject"],
+            "body": variant["body"],
+            "template_name": variant.get("template_name", draft["template_name"]),
+            "ai_context": variant.get("ai_context"),
+        },
+    )
 
     flash("Draft updated with selected variant.", "success")
     return redirect(url_for("campaigns.draft_detail", draft_id=draft_id))
 
 
 # ── A/B Testing (C1) ─────────────────────────────────────────────────
+
 
 @campaigns_bp.route("/campaigns/ab-tests")
 def ab_tests():
@@ -327,6 +351,7 @@ def ab_tests():
 
 
 # ── Prospect Profile (C4) ────────────────────────────────────────────
+
 
 @campaigns_bp.route("/prospects/<int:prospect_id>/profile")
 def prospect_profile(prospect_id):

@@ -1,9 +1,8 @@
 """Generic webhook notifications for pipeline events.
 Supports any JSON-accepting webhook (Discord, Teams, custom endpoints, etc.)."""
 
-import os
 import logging
-from typing import Optional
+import os
 
 import requests
 
@@ -51,8 +50,8 @@ def send_pipeline_alert(
 
     # Generic JSON payload (works with most webhook services)
     payload = {
-        "text": summary,             # Generic / Mattermost
-        "content": summary,          # Discord
+        "text": summary,  # Generic / Mattermost
+        "content": summary,  # Discord
         "title": title,
         "body": summary,
     }

@@ -18,6 +18,8 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+APP_VERSION = "2.0.0"
+
 
 def _as_bool(value: str | None, default: bool) -> bool:
     if value is None:
@@ -35,8 +37,11 @@ def _as_list(value: str | None, default: list[str]) -> list[str]:
 @dataclass(frozen=True)
 class Settings:
     # -- Scraping -------------------------------------------------------
-    finn_keywords: list[str] = field(default_factory=lambda: _as_list(
-        os.getenv("FINN_KEYWORDS"), ["seafood", "aquaculture", "sjømat"]))
+    finn_keywords: list[str] = field(
+        default_factory=lambda: _as_list(
+            os.getenv("FINN_KEYWORDS"), ["seafood", "aquaculture", "sjømat"]
+        )
+    )
     run_time: str = os.getenv("RUN_TIME", "09:30")
     # Bounded parallel posting processing (1 = sequential, current default
     # behaviour preserved; 2-4 recommended once Snov credits allow).
@@ -50,6 +55,8 @@ class Settings:
     snov_list_id: str | None = os.getenv("SNOV_LIST_ID")
     # Abort a run before burning time when balance is empty or below this.
     snov_min_credits: int = int(os.getenv("SNOV_MIN_CREDITS", "0"))
+    # Warn (+ webhook if configured) when balance drops below this.
+    snov_low_water_credits: int = int(os.getenv("SNOV_LOW_WATER_CREDITS", "200"))
 
     # -- Outreach -------------------------------------------------------
     resend_api_key: str | None = os.getenv("RESEND_API_KEY")
@@ -68,6 +75,7 @@ class Settings:
     # -- Web ------------------------------------------------------------
     flask_secret: str | None = os.getenv("FLASK_SECRET")
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
+    log_format: str = os.getenv("LOG_FORMAT", "pretty")
     # Dashboard basic auth. Unset = open dashboard (local use only) + warning.
     dashboard_user: str | None = os.getenv("DASHBOARD_USER")
     dashboard_pass: str | None = os.getenv("DASHBOARD_PASS")
@@ -90,11 +98,15 @@ class Settings:
         """
         problems: list[str] = []
         if not self.snov_client_id or not self.snov_client_secret:
-            problems.append("SNOV_CLIENT_ID / SNOV_CLIENT_SECRET not set — enrichment disabled")
+            problems.append(
+                "SNOV_CLIENT_ID / SNOV_CLIENT_SECRET not set — enrichment disabled"
+            )
         if not self.resend_api_key:
             problems.append("RESEND_API_KEY not set — email sending disabled")
         if not self.anthropic_api_key:
-            problems.append("ANTHROPIC_API_KEY not set — AI personalization falls back to templates")
+            problems.append(
+                "ANTHROPIC_API_KEY not set — AI personalization falls back to templates"
+            )
         if not self.flask_secret:
             problems.append("FLASK_SECRET not set — ephemeral session secret in use")
         return problems

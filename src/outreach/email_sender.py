@@ -2,7 +2,7 @@
 
 import html
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import resend
 
@@ -61,8 +61,12 @@ def _send_with_retry(params: dict, max_attempts: int = 3):
             last_exc = exc
             if attempt == max_attempts:
                 raise
-            logger.warning("Resend send attempt %d/%d failed (%s), retrying",
-                           attempt, max_attempts, exc)
+            logger.warning(
+                "Resend send attempt %d/%d failed (%s), retrying",
+                attempt,
+                max_attempts,
+                exc,
+            )
             _time.sleep(2.0 * attempt)
         except ResendError:
             raise
@@ -82,7 +86,10 @@ def send_email_direct(draft_id: int) -> dict:
         return {"success": False, "error": "Draft not found"}
 
     if draft["status"] != "approved":
-        return {"success": False, "error": f"Draft status is '{draft['status']}', expected 'approved'"}
+        return {
+            "success": False,
+            "error": f"Draft status is '{draft['status']}', expected 'approved'",
+        }
     if draft.get("sent_at"):
         return {"success": False, "error": "Draft already sent (double-send guard)"}
 
@@ -105,28 +112,44 @@ def send_email_direct(draft_id: int) -> dict:
         }
 
         result = _send_with_retry(params)
-        resend_id = result.get("id") if isinstance(result, dict) else getattr(result, "id", None)
+        resend_id = (
+            result.get("id")
+            if isinstance(result, dict)
+            else getattr(result, "id", None)
+        )
 
-        now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
-        db.update_email_draft(draft_id, {
-            "status": "sent",
-            "sent_at": now,
-            "resend_id": resend_id,
-            "notes": f"sent_via_resend:{resend_id or 'ok'}",
-        })
-        db.log_outreach({
-            "prospect_id": draft["prospect_id"],
-            "campaign_id": "resend_direct",
-            "status": "sent_via_resend",
-            "sent_at": now,
-            "notes": f"Draft #{draft_id} sent directly via Resend to {draft['prospect_email']}",
-        })
+        now = datetime.now(UTC).replace(tzinfo=None).isoformat()
+        db.update_email_draft(
+            draft_id,
+            {
+                "status": "sent",
+                "sent_at": now,
+                "resend_id": resend_id,
+                "notes": f"sent_via_resend:{resend_id or 'ok'}",
+            },
+        )
+        db.log_outreach(
+            {
+                "prospect_id": draft["prospect_id"],
+                "campaign_id": "resend_direct",
+                "status": "sent_via_resend",
+                "sent_at": now,
+                "notes": f"Draft #{draft_id} sent directly via Resend to {draft['prospect_email']}",
+            }
+        )
 
-        logger.info("Email sent via Resend to %s (draft #%d, id=%s)", draft["prospect_email"], draft_id, resend_id)
+        logger.info(
+            "Email sent via Resend to %s (draft #%d, id=%s)",
+            draft["prospect_email"],
+            draft_id,
+            resend_id,
+        )
         return {"success": True, "error": None, "resend_id": resend_id}
 
     except Exception as exc:
-        logger.error("Resend send failed for draft #%d: %s", draft_id, exc, exc_info=True)
+        logger.error(
+            "Resend send failed for draft #%d: %s", draft_id, exc, exc_info=True
+        )
         return {"success": False, "error": str(exc)}
 
 
@@ -140,26 +163,40 @@ def send_all_approved_email() -> dict:
     """
     api_key = settings.resend_api_key
     if not api_key:
-        return {"total": 0, "sent": 0, "failed": 0, "skipped_scheduled": 0, "errors": ["RESEND_API_KEY not configured"]}
+        return {
+            "total": 0,
+            "sent": 0,
+            "failed": 0,
+            "skipped_scheduled": 0,
+            "errors": ["RESEND_API_KEY not configured"],
+        }
 
     drafts = db.get_approved_drafts_with_prospects()
-    stats = {"total": len(drafts), "sent": 0, "failed": 0, "skipped_scheduled": 0, "errors": []}
+    stats = {
+        "total": len(drafts),
+        "sent": 0,
+        "failed": 0,
+        "skipped_scheduled": 0,
+        "errors": [],
+    }
 
     if not drafts:
         return stats
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     for draft in drafts:
         # Check scheduled_for: skip if it's in the future
         scheduled_for = draft.get("scheduled_for")
         if scheduled_for:
             try:
-                sched_dt = datetime.fromisoformat(scheduled_for).replace(tzinfo=timezone.utc)
+                sched_dt = datetime.fromisoformat(scheduled_for).replace(tzinfo=UTC)
                 if sched_dt > now:
                     logger.debug(
                         "Draft #%d scheduled for %s, skipping (now=%s)",
-                        draft["id"], scheduled_for, now.isoformat(),
+                        draft["id"],
+                        scheduled_for,
+                        now.isoformat(),
                     )
                     stats["skipped_scheduled"] += 1
                     continue

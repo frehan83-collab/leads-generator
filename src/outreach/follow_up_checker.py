@@ -4,7 +4,6 @@ Checks for sent emails with no opens after N days and creates + sends follow-ups
 """
 
 import logging
-from typing import Optional
 
 from src.config import settings
 from src.database import db
@@ -17,7 +16,7 @@ def create_follow_up_draft(
     parent_draft_id: int,
     step: int,
     auto_approve: bool | None = None,
-) -> Optional[int]:
+) -> int | None:
     """Create a follow-up draft for a parent draft.
 
     Args:
@@ -52,8 +51,12 @@ def create_follow_up_draft(
     try:
         subject, body = template_fn(prospect, original_subject)
     except Exception as exc:
-        logger.warning("Failed to generate follow-up for draft #%d step %d: %s",
-                       parent_draft_id, step, exc)
+        logger.warning(
+            "Failed to generate follow-up for draft #%d step %d: %s",
+            parent_draft_id,
+            step,
+            exc,
+        )
         return None
 
     draft_data = {
@@ -63,19 +66,26 @@ def create_follow_up_draft(
         "subject": subject,
         "body": body,
         # Safe default: drafts await human approval unless auto-send is on.
-        "status": "approved" if (settings.followup_auto_send if auto_approve is None else auto_approve) else "draft",
+        "status": "approved"
+        if (settings.followup_auto_send if auto_approve is None else auto_approve)
+        else "draft",
     }
 
     draft_id = db.insert_email_draft(draft_data)
     if draft_id:
         # Set sequence metadata
-        db.update_email_draft(draft_id, {
-            "sequence_step": step,
-            "parent_draft_id": parent_draft_id,
-        })
+        db.update_email_draft(
+            draft_id,
+            {
+                "sequence_step": step,
+                "parent_draft_id": parent_draft_id,
+            },
+        )
         logger.info(
             "Created follow-up draft #%d (step %d) for prospect %s",
-            draft_id, step, prospect.get("email", "?"),
+            draft_id,
+            step,
+            prospect.get("email", "?"),
         )
 
     return draft_id
@@ -114,12 +124,16 @@ def check_and_create_followups(
     logger.info("Found %d drafts needing follow-up", len(drafts))
 
     for draft in drafts:
-        current_step = (draft.get("sequence_step") or 1)
+        current_step = draft.get("sequence_step") or 1
         next_step = current_step + 1
 
-        new_draft_id = create_follow_up_draft(draft["id"], next_step, auto_approve=auto_send)
+        new_draft_id = create_follow_up_draft(
+            draft["id"], next_step, auto_approve=auto_send
+        )
         if not new_draft_id:
-            stats["errors"].append(f"Failed to create follow-up for draft #{draft['id']}")
+            stats["errors"].append(
+                f"Failed to create follow-up for draft #{draft['id']}"
+            )
             continue
 
         stats["followups_created"] += 1
@@ -127,6 +141,7 @@ def check_and_create_followups(
         if auto_send:
             try:
                 from src.outreach.email_sender import send_email_direct
+
                 result = send_email_direct(new_draft_id)
                 if result["success"]:
                     stats["followups_sent"] += 1

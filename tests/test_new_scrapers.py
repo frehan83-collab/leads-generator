@@ -3,18 +3,25 @@ Tests for the new scrapers (karrierestart.no and jobbnorge.no).
 Tests URL building, ID extraction, and deduplication logic.
 """
 
-import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-from src.scraper.karrierestart_scraper import (
-    _build_search_url as ks_build_url,
-    _extract_job_id as ks_extract_id,
-    scrape_all_keywords as ks_scrape_all,
-)
 from src.scraper.jobbnorge_scraper import (
     _build_search_url as jn_build_url,
+)
+from src.scraper.jobbnorge_scraper import (
     _extract_job_id as jn_extract_id,
+)
+from src.scraper.jobbnorge_scraper import (
     scrape_all_keywords as jn_scrape_all,
+)
+from src.scraper.karrierestart_scraper import (
+    _build_search_url as ks_build_url,
+)
+from src.scraper.karrierestart_scraper import (
+    _extract_job_id as ks_extract_id,
+)
+from src.scraper.karrierestart_scraper import (
+    scrape_all_keywords as ks_scrape_all,
 )
 
 

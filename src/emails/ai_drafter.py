@@ -4,9 +4,8 @@ F5 enhanced: Now includes company context (BRREG data), Sperton industry
 value props, and optional A/B variant generation.
 """
 
-import os
 import logging
-from typing import Optional, Union
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +18,7 @@ def generate_ai_opener(
     keyword: str,
     company_context: dict = None,
     variant_count: int = 1,
-) -> Optional[Union[str, list[str]]]:
+) -> str | list[str] | None:
     """
     Generate a personalized 3-line email opening paragraph using Claude Haiku.
 
@@ -50,7 +49,7 @@ def generate_ai_opener(
             f"- Recipient: {prospect_name}, {prospect_title} at {company_name}",
             f'- They posted a job listing: "{job_posting_title}"',
             f"- Industry keyword: {keyword}",
-            f"- Sender: Sperton Rekruttering (specialist recruitment firm, 20+ years, ISO 9001:2015)",
+            "- Sender: Sperton Rekruttering (specialist recruitment firm, 20+ years, ISO 9001:2015)",
         ]
 
         # F5: Add company context from BRREG if available
@@ -64,18 +63,15 @@ def generate_ai_opener(
                     f"- Company industry (NACE): {company_context['nace_description']}"
                 )
             if company_context.get("city"):
-                context_lines.append(
-                    f"- Company location: {company_context['city']}"
-                )
+                context_lines.append(f"- Company location: {company_context['city']}")
 
         # F5: Add Sperton's industry-specific value proposition
         try:
             from src.emails.sperton_context import get_industry_context
+
             nace = (company_context or {}).get("nace_code", "")
             industry_pitch = get_industry_context(nace_code=nace, keyword=keyword)
-            context_lines.append(
-                f"- Sperton's relevant expertise: {industry_pitch}"
-            )
+            context_lines.append(f"- Sperton's relevant expertise: {industry_pitch}")
         except Exception:
             pass  # Don't fail if sperton_context is unavailable
 
@@ -118,13 +114,17 @@ def generate_ai_opener(
             variants = [v.strip() for v in raw_text.split("---") if v.strip()]
             logger.info(
                 "AI generated %d variants for %s at %s",
-                len(variants), prospect_name, company_name,
+                len(variants),
+                prospect_name,
+                company_name,
             )
             return variants if variants else None
         else:
             logger.info(
                 "AI opener generated for %s at %s (%d chars)",
-                prospect_name, company_name, len(raw_text),
+                prospect_name,
+                company_name,
+                len(raw_text),
             )
             return raw_text
 

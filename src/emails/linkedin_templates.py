@@ -11,7 +11,9 @@ def connection_request(prospect: dict, posting: dict = None) -> str:
 
     Personal, references job posting, professional tone.
     """
-    first_name = prospect.get("first_name") or (prospect.get("full_name", "").split()[0] if prospect.get("full_name") else "")
+    first_name = prospect.get("first_name") or (
+        prospect.get("full_name", "").split()[0] if prospect.get("full_name") else ""
+    )
     company = prospect.get("company_name", "")
     job_title = (posting or {}).get("title", "")
 
@@ -37,9 +39,10 @@ def connection_request(prospect: dict, posting: dict = None) -> str:
 
 def follow_up_message(prospect: dict, posting: dict = None) -> str:
     """LinkedIn follow-up after connection accepted."""
-    first_name = prospect.get("first_name") or (prospect.get("full_name", "").split()[0] if prospect.get("full_name") else "")
+    first_name = prospect.get("first_name") or (
+        prospect.get("full_name", "").split()[0] if prospect.get("full_name") else ""
+    )
     company = prospect.get("company_name", "")
-    position = prospect.get("position", prospect.get("prospect_title", ""))
 
     msg = f"""Takk for kontakten, {first_name}!
 
@@ -58,7 +61,9 @@ Sperton Rekruttering"""
 
 def inmail_message(prospect: dict, posting: dict = None) -> str:
     """LinkedIn InMail — can be longer, used for premium outreach."""
-    first_name = prospect.get("first_name") or (prospect.get("full_name", "").split()[0] if prospect.get("full_name") else "")
+    first_name = prospect.get("first_name") or (
+        prospect.get("full_name", "").split()[0] if prospect.get("full_name") else ""
+    )
     company = prospect.get("company_name", "")
     job_title = (posting or {}).get("title", "")
 

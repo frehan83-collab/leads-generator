@@ -8,9 +8,11 @@ arbeidsplassen.nav.no is Norway's official public job board, managed by NAV
 
 import logging
 import re
-from datetime import datetime, timezone
-from typing import Generator
-from playwright.sync_api import Page, TimeoutError as PWTimeout
+from collections.abc import Generator
+from datetime import UTC, datetime
+
+from playwright.sync_api import Page
+from playwright.sync_api import TimeoutError as PWTimeout
 
 from src.scraper.base import (
     accept_cookies,
@@ -56,9 +58,18 @@ def _parse_nav_date(text: str) -> str | None:
 
     # Norwegian: "12. mars 2025" or "5. januar 2024"
     months_no = {
-        "januar": "01", "februar": "02", "mars": "03", "april": "04",
-        "mai": "05", "juni": "06", "juli": "07", "august": "08",
-        "september": "09", "oktober": "10", "november": "11", "desember": "12",
+        "januar": "01",
+        "februar": "02",
+        "mars": "03",
+        "april": "04",
+        "mai": "05",
+        "juni": "06",
+        "juli": "07",
+        "august": "08",
+        "september": "09",
+        "oktober": "10",
+        "november": "11",
+        "desember": "12",
     }
     match = re.match(r"(\d{1,2})\.\s*(\w+)\s+(\d{4})", text)
     if match:
@@ -87,11 +98,14 @@ def _parse_listing_page(page: Page, keyword: str) -> list[dict]:
         page.wait_for_selector("a[href*='/stillinger/stilling/']", timeout=12000)
     except PWTimeout:
         logger.warning("No job listings found for keyword '%s'", keyword)
-        health = check_selectors(page, {
-            "job_links": "a[href*='/stillinger/stilling/']",
-            "articles": "article",
-            "headings": "h2, h3",
-        })
+        health = check_selectors(
+            page,
+            {
+                "job_links": "a[href*='/stillinger/stilling/']",
+                "articles": "article",
+                "headings": "h2, h3",
+            },
+        )
         logger.warning("nav.no selector health for '%s': %s", keyword, health)
         snapshot_on_fail(page, f"nav_nocards_{keyword}")
         return results
@@ -126,7 +140,9 @@ def _parse_listing_page(page: Page, keyword: str) -> list[dict]:
 
             # Try to find a better container (parent article, section, or div with data-testid)
             for _ in range(5):  # Walk up max 5 levels
-                parent = container.evaluate_handle("el => el.parentElement").as_element()
+                parent = container.evaluate_handle(
+                    "el => el.parentElement"
+                ).as_element()
                 if parent:
                     tag = parent.evaluate("el => el.tagName").lower()
                     if tag in ["article", "section"]:
@@ -158,20 +174,35 @@ def _parse_listing_page(page: Page, keyword: str) -> list[dict]:
             company = ""
 
             # Common patterns in NAV
-            company_match = re.search(r"Arbeidsgiver[:\s]+([^\n]+)", container_text, re.IGNORECASE)
+            company_match = re.search(
+                r"Arbeidsgiver[:\s]+([^\n]+)", container_text, re.IGNORECASE
+            )
             if company_match:
                 company = company_match.group(1).strip()
             else:
                 # Try to find company in text (usually second line or after title)
-                lines = [l.strip() for l in container_text.split("\n") if l.strip()]
+                lines = [
+                    line.strip() for line in container_text.split("\n") if line.strip()
+                ]
                 if len(lines) > 1:
                     # Skip first line (title), take next non-location line
                     for line in lines[1:]:
                         # Skip if it looks like a location (contains county or "Sted:")
-                        if any(county in line.upper() for county in [
-                            "OSLO", "VIKEN", "ROGALAND", "VESTLAND", "TRØNDELAG",
-                            "NORDLAND", "TROMS", "FINNMARK", "MØRE", "AGDER",
-                        ]):
+                        if any(
+                            county in line.upper()
+                            for county in [
+                                "OSLO",
+                                "VIKEN",
+                                "ROGALAND",
+                                "VESTLAND",
+                                "TRØNDELAG",
+                                "NORDLAND",
+                                "TROMS",
+                                "FINNMARK",
+                                "MØRE",
+                                "AGDER",
+                            ]
+                        ):
                             continue
                         if "Sted:" in line:
                             continue
@@ -180,22 +211,37 @@ def _parse_listing_page(page: Page, keyword: str) -> list[dict]:
 
             # Extract location
             location = ""
-            location_match = re.search(r"Sted[:\s]+([^\n]+)", container_text, re.IGNORECASE)
+            location_match = re.search(
+                r"Sted[:\s]+([^\n]+)", container_text, re.IGNORECASE
+            )
             if location_match:
                 location = location_match.group(1).strip()
             else:
                 # Look for Norwegian county names
                 for line in container_text.split("\n"):
-                    if any(county in line.upper() for county in [
-                        "OSLO", "VIKEN", "ROGALAND", "VESTLAND", "TRØNDELAG",
-                        "NORDLAND", "TROMS", "FINNMARK", "MØRE", "AGDER",
-                    ]):
+                    if any(
+                        county in line.upper()
+                        for county in [
+                            "OSLO",
+                            "VIKEN",
+                            "ROGALAND",
+                            "VESTLAND",
+                            "TRØNDELAG",
+                            "NORDLAND",
+                            "TROMS",
+                            "FINNMARK",
+                            "MØRE",
+                            "AGDER",
+                        ]
+                    ):
                         location = line.strip()
                         break
 
             # Published date
             published_at = None
-            date_match = re.search(r"Publisert[:\s]+([^\n]+)", container_text, re.IGNORECASE)
+            date_match = re.search(
+                r"Publisert[:\s]+([^\n]+)", container_text, re.IGNORECASE
+            )
             if date_match:
                 published_at = _parse_nav_date(date_match.group(1).strip())
             if not published_at:
@@ -205,20 +251,22 @@ def _parse_listing_page(page: Page, keyword: str) -> list[dict]:
                     if dt_attr:
                         published_at = dt_attr[:10] if len(dt_attr) >= 10 else dt_attr
 
-            results.append({
-                "nav_id": job_id,
-                "external_id": job_id,
-                "source": "nav",
-                "title": title,
-                "company_name": company,
-                "company_domain": None,
-                "org_number": None,
-                "location": location,
-                "url": href,
-                "keyword_matched": keyword,
-                "published_at": published_at,
-                "scraped_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
-            })
+            results.append(
+                {
+                    "nav_id": job_id,
+                    "external_id": job_id,
+                    "source": "nav",
+                    "title": title,
+                    "company_name": company,
+                    "company_domain": None,
+                    "org_number": None,
+                    "location": location,
+                    "url": href,
+                    "keyword_matched": keyword,
+                    "published_at": published_at,
+                    "scraped_at": datetime.now(UTC).replace(tzinfo=None).isoformat(),
+                }
+            )
 
         except Exception as exc:
             logger.debug("Error parsing NAV job card: %s", exc)
@@ -253,7 +301,9 @@ def _has_next_page(page: Page, current_page: int) -> bool:
     return False
 
 
-def scrape_keyword(keyword: str, max_pages: int = 5, browser=None, known_ids: set = None) -> Generator[dict, None, None]:
+def scrape_keyword(
+    keyword: str, max_pages: int = 5, browser=None, known_ids: set = None
+) -> Generator[dict, None, None]:
     """
     Scrape arbeidsplassen.nav.no for a given keyword across multiple pages.
     Yields one dict per job posting.
@@ -293,14 +343,25 @@ def scrape_keyword(keyword: str, max_pages: int = 5, browser=None, known_ids: se
                 postings = _parse_listing_page(page, keyword)
 
                 if not postings:
-                    logger.info("No results on page %d for '%s', stopping.", page_num + 1, keyword)
+                    logger.info(
+                        "No results on page %d for '%s', stopping.",
+                        page_num + 1,
+                        keyword,
+                    )
                     break
 
                 # Incremental: skip already-known postings
                 if known_ids is not None:
-                    new_postings = [p for p in postings if p["external_id"] not in known_ids]
+                    new_postings = [
+                        p for p in postings if p["external_id"] not in known_ids
+                    ]
                     if len(new_postings) == 0:
-                        logger.info("All %d postings on page %d already known for '%s', stopping early.", len(postings), page_num + 1, keyword)
+                        logger.info(
+                            "All %d postings on page %d already known for '%s', stopping early.",
+                            len(postings),
+                            page_num + 1,
+                            keyword,
+                        )
                         break
                     postings = new_postings
 
@@ -310,14 +371,18 @@ def scrape_keyword(keyword: str, max_pages: int = 5, browser=None, known_ids: se
 
                 # Check for next page
                 if not _has_next_page(page, page_num):
-                    logger.debug("No next page after page %d for '%s'", page_num + 1, keyword)
+                    logger.debug(
+                        "No next page after page %d for '%s'", page_num + 1, keyword
+                    )
                     break
 
                 # Be polite - wait between pages
                 page.wait_for_timeout(1000)
 
             except PWTimeout:
-                logger.warning("Timeout on page %d for keyword '%s'", page_num + 1, keyword)
+                logger.warning(
+                    "Timeout on page %d for keyword '%s'", page_num + 1, keyword
+                )
                 break
             except Exception as exc:
                 logger.error("Error scraping page %d: %s", page_num + 1, exc)
@@ -329,7 +394,9 @@ def scrape_keyword(keyword: str, max_pages: int = 5, browser=None, known_ids: se
     logger.info("Scraped %d postings from NAV for keyword '%s'", total, keyword)
 
 
-def scrape_all_keywords(keywords: list[str], max_pages: int = 5, browser=None, known_ids: set = None) -> Generator[dict, None, None]:
+def scrape_all_keywords(
+    keywords: list[str], max_pages: int = 5, browser=None, known_ids: set = None
+) -> Generator[dict, None, None]:
     """
     Scrape NAV for all keywords. Deduplicates by nav_id across keywords.
 
@@ -345,7 +412,9 @@ def scrape_all_keywords(keywords: list[str], max_pages: int = 5, browser=None, k
     seen_ids: set[str] = set()
 
     for keyword in keywords:
-        for posting in scrape_keyword(keyword.strip(), max_pages=max_pages, browser=browser, known_ids=known_ids):
+        for posting in scrape_keyword(
+            keyword.strip(), max_pages=max_pages, browser=browser, known_ids=known_ids
+        ):
             job_id = posting["nav_id"]
             if job_id not in seen_ids:
                 seen_ids.add(job_id)

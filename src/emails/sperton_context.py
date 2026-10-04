@@ -59,29 +59,29 @@ INDUSTRY_CONTEXT = {
 
 # Map common NACE codes to our industry keys
 NACE_TO_INDUSTRY = {
-    "03": "seafood",        # Fishing and aquaculture
+    "03": "seafood",  # Fishing and aquaculture
     "03.1": "seafood",
     "03.2": "aquaculture",
     "03.21": "aquaculture",
-    "06": "oil_gas",        # Extraction of crude petroleum and gas
-    "09": "oil_gas",        # Mining support services
-    "10": "seafood",        # Food manufacturing (often seafood)
-    "10.2": "seafood",      # Processing of fish
-    "19": "energy",         # Petroleum products
-    "35": "energy",         # Electricity, gas, steam
-    "41": "construction",   # Building construction
-    "42": "construction",   # Civil engineering
-    "43": "construction",   # Specialized construction
-    "49": "logistics",      # Land transport
-    "50": "maritime",       # Water transport
-    "52": "logistics",      # Warehousing
-    "62": "it",             # Computer programming
-    "63": "it",             # Information services
-    "64": "finance",        # Financial services
-    "65": "finance",        # Insurance
-    "66": "finance",        # Other financial activities
-    "86": "healthcare",     # Human health
-    "87": "healthcare",     # Residential care
+    "06": "oil_gas",  # Extraction of crude petroleum and gas
+    "09": "oil_gas",  # Mining support services
+    "10": "seafood",  # Food manufacturing (often seafood)
+    "10.2": "seafood",  # Processing of fish
+    "19": "energy",  # Petroleum products
+    "35": "energy",  # Electricity, gas, steam
+    "41": "construction",  # Building construction
+    "42": "construction",  # Civil engineering
+    "43": "construction",  # Specialized construction
+    "49": "logistics",  # Land transport
+    "50": "maritime",  # Water transport
+    "52": "logistics",  # Warehousing
+    "62": "it",  # Computer programming
+    "63": "it",  # Information services
+    "64": "finance",  # Financial services
+    "65": "finance",  # Insurance
+    "66": "finance",  # Other financial activities
+    "86": "healthcare",  # Human health
+    "87": "healthcare",  # Residential care
 }
 
 # Map keywords to industry keys

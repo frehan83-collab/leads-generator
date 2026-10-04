@@ -4,7 +4,6 @@ site markup changes (empty results, missing elements) and extract correctly
 on the happy path. Uses a FakePage harness — no browser needed.
 """
 
-import pytest
 from playwright.sync_api import TimeoutError as PWTimeout
 
 
@@ -72,21 +71,27 @@ class FakePage(FakeEl):
 
 # --- finn -----------------------------------------------------------------
 
+
 def _finn_card():
-    link = FakeEl(text="Daglig leder", attrs={"href": "/job/ad/123"},
-                  tag_name="a")
-    return FakeEl(children={
-        "a[href*='/job/ad/']": link,
-        ".text-caption.s-text-subtle, .s-text-subtle strong, strong":
-            FakeEl(text="Acme AS"),
-        "li.min-w-0 span, .job-card__pills li:first-child span":
-            FakeEl(text="Oslo"),
-        "time, [datetime]": FakeEl(attrs={"datetime": "2024-05-01T09:00:00"}),
-    }, tag_name="article")
+    link = FakeEl(text="Daglig leder", attrs={"href": "/job/ad/123"}, tag_name="a")
+    return FakeEl(
+        children={
+            "a[href*='/job/ad/']": link,
+            ".text-caption.s-text-subtle, .s-text-subtle strong, strong": FakeEl(
+                text="Acme AS"
+            ),
+            "li.min-w-0 span, .job-card__pills li:first-child span": FakeEl(
+                text="Oslo"
+            ),
+            "time, [datetime]": FakeEl(attrs={"datetime": "2024-05-01T09:00:00"}),
+        },
+        tag_name="article",
+    )
 
 
 def test_finn_parse_happy_path():
     from src.scraper.finn_scraper import _parse_listing_page
+
     page = FakePage(mapping={"article": [_finn_card()]})
     out = _parse_listing_page(page, "seafood")
     assert len(out) == 1
@@ -100,6 +105,7 @@ def test_finn_parse_happy_path():
 def test_finn_parse_empty_page_returns_empty_and_snapshots(tmp_path, monkeypatch):
     from src.scraper import base
     from src.scraper.finn_scraper import _parse_listing_page
+
     monkeypatch.setattr(base, "SNAPSHOT_DIR", tmp_path)
     out = _parse_listing_page(FakePage(wait_ok=False), "seafood")
     assert out == []
@@ -108,19 +114,24 @@ def test_finn_parse_empty_page_returns_empty_and_snapshots(tmp_path, monkeypatch
 
 # --- nav -------------------------------------------------------------------
 
+
 def _nav_link():
     container = FakeEl(
         text="Daglig leder\nArbeidsgiver: Acme AS\nSted: Oslo\nPublisert: 01.05.2024",
         tag_name="article",
     )
-    link = FakeEl(text="Daglig leder",
-                  attrs={"href": "/stillinger/stilling/abc-123"},
-                  tag_name="a", parent=container)
+    link = FakeEl(
+        text="Daglig leder",
+        attrs={"href": "/stillinger/stilling/abc-123"},
+        tag_name="a",
+        parent=container,
+    )
     return link
 
 
 def test_nav_parse_happy_path():
     from src.scraper.nav_scraper import _parse_listing_page
+
     page = FakePage(mapping={"a[href*='/stillinger/stilling/']": [_nav_link()]})
     out = _parse_listing_page(page, "seafood")
     assert len(out) == 1
@@ -132,6 +143,7 @@ def test_nav_parse_happy_path():
 def test_nav_parse_empty_page_returns_empty(tmp_path, monkeypatch):
     from src.scraper import base
     from src.scraper.nav_scraper import _parse_listing_page
+
     monkeypatch.setattr(base, "SNAPSHOT_DIR", tmp_path)
     assert _parse_listing_page(FakePage(wait_ok=False), "seafood") == []
     assert list(tmp_path.glob("nav_nocards_seafood_*.html"))
@@ -139,25 +151,32 @@ def test_nav_parse_empty_page_returns_empty(tmp_path, monkeypatch):
 
 # --- karrierestart / jobbnorge ----------------------------------------------
 
+
 def _ks_card(base_url, job_path):
-    link = FakeEl(text="Butikksjef", attrs={"href": f"{job_path}/42"},
-                  tag_name="a")
-    return FakeEl(children={
-        f"a[href*='{job_path}/']": link,
-        "h2, h3, h4, [class*='title']": FakeEl(text="Butikksjef"),
-        "[class*='company'], [class*='employer'], strong": FakeEl(text="Acme AS"),
-        "[class*='location'], [class*='place']": FakeEl(text="Bergen"),
-        "time, [datetime]": FakeEl(attrs={"datetime": "2024-06-01T00:00:00"}),
-    }, tag_name="article")
+    link = FakeEl(text="Butikksjef", attrs={"href": f"{job_path}/42"}, tag_name="a")
+    return FakeEl(
+        children={
+            f"a[href*='{job_path}/']": link,
+            "h2, h3, h4, [class*='title']": FakeEl(text="Butikksjef"),
+            "[class*='company'], [class*='employer'], strong": FakeEl(text="Acme AS"),
+            "[class*='location'], [class*='place']": FakeEl(text="Bergen"),
+            "time, [datetime]": FakeEl(attrs={"datetime": "2024-06-01T00:00:00"}),
+        },
+        tag_name="article",
+    )
 
 
 def test_karrierestart_parse_happy_path():
     from src.scraper.karrierestart_scraper import _parse_listing_page
-    page = FakePage(mapping={
-        "a[href*='/ledig-stilling/'], .job-listing, article": None,
-        ".job-listing, article, .search-result-item, [class*='job-card']":
-            [_ks_card("", "/ledig-stilling")],
-    })
+
+    page = FakePage(
+        mapping={
+            "a[href*='/ledig-stilling/'], .job-listing, article": None,
+            ".job-listing, article, .search-result-item, [class*='job-card']": [
+                _ks_card("", "/ledig-stilling")
+            ],
+        }
+    )
     # wait_for_selector succeeds (wait_ok default True)
     out = _parse_listing_page(page, "seafood")
     assert len(out) == 1
@@ -167,8 +186,10 @@ def test_karrierestart_parse_happy_path():
 
 # --- base helpers -------------------------------------------------------------
 
+
 def test_accept_cookies_clicks_norwegian_variant():
     from src.scraper.base import accept_cookies
+
     page = FakePage()
     assert accept_cookies(page) is True
     assert page.clicked and "Godta" in page.clicked[0]
@@ -176,15 +197,19 @@ def test_accept_cookies_clicks_norwegian_variant():
 
 def test_check_selectors_counts():
     from src.scraper.base import check_selectors
+
     page = FakePage(mapping={"a": [FakeEl(), FakeEl()]})
     assert check_selectors(page, {"links": "a", "missing": "zzz"}) == {
-        "links": 2, "missing": 0,
+        "links": 2,
+        "missing": 0,
     }
 
 
 def test_browser_context_shared_mode_closes():
     from unittest.mock import MagicMock
+
     from src.scraper.base import browser_context
+
     browser = MagicMock()
     ctx = MagicMock()
     browser.new_context.return_value = ctx

@@ -2,11 +2,11 @@
 Tests for the retry decorator and goto_with_retry helper.
 """
 
-import time
-import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock
 
-from src.utils.retry import retry, goto_with_retry
+import pytest
+
+from src.utils.retry import goto_with_retry, retry
 
 
 class TestRetryDecorator:
@@ -53,7 +53,11 @@ class TestRetryDecorator:
 
         call_count = 0
 
-        @retry(max_attempts=3, base_delay=0.01, retryable_exceptions=(requests.exceptions.HTTPError,))
+        @retry(
+            max_attempts=3,
+            base_delay=0.01,
+            retryable_exceptions=(requests.exceptions.HTTPError,),
+        )
         def client_error():
             nonlocal call_count
             call_count += 1
@@ -72,7 +76,11 @@ class TestRetryDecorator:
 
         call_count = 0
 
-        @retry(max_attempts=3, base_delay=0.01, retryable_exceptions=(requests.exceptions.HTTPError,))
+        @retry(
+            max_attempts=3,
+            base_delay=0.01,
+            retryable_exceptions=(requests.exceptions.HTTPError,),
+        )
         def rate_limited():
             nonlocal call_count
             call_count += 1
@@ -92,7 +100,11 @@ class TestRetryDecorator:
 
         call_count = 0
 
-        @retry(max_attempts=3, base_delay=0.01, retryable_exceptions=(requests.exceptions.HTTPError,))
+        @retry(
+            max_attempts=3,
+            base_delay=0.01,
+            retryable_exceptions=(requests.exceptions.HTTPError,),
+        )
         def server_error():
             nonlocal call_count
             call_count += 1
@@ -107,6 +119,7 @@ class TestRetryDecorator:
 
     def test_only_retries_specified_exceptions(self):
         """Should not catch exceptions not in retryable_exceptions."""
+
         @retry(max_attempts=3, base_delay=0.01, retryable_exceptions=(ValueError,))
         def wrong_error():
             raise TypeError("bad type")

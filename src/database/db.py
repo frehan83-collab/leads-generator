@@ -3,19 +3,21 @@ Database module — SQLite for local dev, PostgreSQL-ready for VPS migration.
 Tracks all prospects, job postings, outreach status, email drafts, and pipeline runs.
 """
 
-import sqlite3
 import logging
+import os
+import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, timezone
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = Path(__file__).parent.parent.parent / "leads.db"
+DB_PATH = Path(
+    os.getenv("LEADS_DB_PATH", Path(__file__).parent.parent.parent / "leads.db")
+)
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    return datetime.now(UTC).replace(tzinfo=None).isoformat()
 
 
 def get_connection() -> sqlite3.Connection:
@@ -45,49 +47,141 @@ def _like_contains(value: str) -> str:
 # (table, column, ddl) — applied only when the table exists and lacks the column.
 _MIGRATIONS: list[tuple[str, str, str]] = [
     # v2: add source + external_id + org_number to job_postings
-    ("job_postings", "source", "ALTER TABLE job_postings ADD COLUMN source TEXT DEFAULT 'finn'"),
-    ("job_postings", "external_id", "ALTER TABLE job_postings ADD COLUMN external_id TEXT"),
-    ("job_postings", "org_number", "ALTER TABLE job_postings ADD COLUMN org_number TEXT"),
+    (
+        "job_postings",
+        "source",
+        "ALTER TABLE job_postings ADD COLUMN source TEXT DEFAULT 'finn'",
+    ),
+    (
+        "job_postings",
+        "external_id",
+        "ALTER TABLE job_postings ADD COLUMN external_id TEXT",
+    ),
+    (
+        "job_postings",
+        "org_number",
+        "ALTER TABLE job_postings ADD COLUMN org_number TEXT",
+    ),
     # v4: Resend webhook tracking (F1)
     ("email_drafts", "resend_id", "ALTER TABLE email_drafts ADD COLUMN resend_id TEXT"),
-    ("email_drafts", "open_count", "ALTER TABLE email_drafts ADD COLUMN open_count INTEGER DEFAULT 0"),
-    ("email_drafts", "click_count", "ALTER TABLE email_drafts ADD COLUMN click_count INTEGER DEFAULT 0"),
+    (
+        "email_drafts",
+        "open_count",
+        "ALTER TABLE email_drafts ADD COLUMN open_count INTEGER DEFAULT 0",
+    ),
+    (
+        "email_drafts",
+        "click_count",
+        "ALTER TABLE email_drafts ADD COLUMN click_count INTEGER DEFAULT 0",
+    ),
     # v5: Follow-up sequences (F3)
-    ("email_drafts", "sequence_step", "ALTER TABLE email_drafts ADD COLUMN sequence_step INTEGER DEFAULT 1"),
-    ("email_drafts", "parent_draft_id", "ALTER TABLE email_drafts ADD COLUMN parent_draft_id INTEGER REFERENCES email_drafts(id)"),
+    (
+        "email_drafts",
+        "sequence_step",
+        "ALTER TABLE email_drafts ADD COLUMN sequence_step INTEGER DEFAULT 1",
+    ),
+    (
+        "email_drafts",
+        "parent_draft_id",
+        "ALTER TABLE email_drafts ADD COLUMN parent_draft_id INTEGER REFERENCES email_drafts(id)",
+    ),
     # v6: AI variants (F5)
-    ("email_drafts", "variant_of", "ALTER TABLE email_drafts ADD COLUMN variant_of INTEGER REFERENCES email_drafts(id)"),
-    ("email_drafts", "ai_context", "ALTER TABLE email_drafts ADD COLUMN ai_context TEXT"),
+    (
+        "email_drafts",
+        "variant_of",
+        "ALTER TABLE email_drafts ADD COLUMN variant_of INTEGER REFERENCES email_drafts(id)",
+    ),
+    (
+        "email_drafts",
+        "ai_context",
+        "ALTER TABLE email_drafts ADD COLUMN ai_context TEXT",
+    ),
     # v7: Intent signals (C3)
-    ("companies", "intent_score", "ALTER TABLE companies ADD COLUMN intent_score INTEGER DEFAULT 0"),
-    ("companies", "intent_signals", "ALTER TABLE companies ADD COLUMN intent_signals TEXT"),
+    (
+        "companies",
+        "intent_score",
+        "ALTER TABLE companies ADD COLUMN intent_score INTEGER DEFAULT 0",
+    ),
+    (
+        "companies",
+        "intent_signals",
+        "ALTER TABLE companies ADD COLUMN intent_signals TEXT",
+    ),
     # v8: Smart scheduler (C5)
-    ("email_drafts", "scheduled_for", "ALTER TABLE email_drafts ADD COLUMN scheduled_for TEXT"),
+    (
+        "email_drafts",
+        "scheduled_for",
+        "ALTER TABLE email_drafts ADD COLUMN scheduled_for TEXT",
+    ),
 ]
 
 # Columns callers are allowed to update dynamically (SQL-injection guard).
 _UPDATABLE_COLUMNS: dict[str, frozenset[str]] = {
-    "email_drafts": frozenset({
-        "template_name", "subject", "body", "status", "approved_at",
-        "sent_at", "opened_at", "replied_at", "notes", "resend_id",
-        "open_count", "click_count", "sequence_step", "parent_draft_id",
-        "variant_of", "ai_context", "scheduled_for", "prospect_id",
-        "job_posting_id",
-    }),
-    "pipeline_runs": frozenset({
-        "finished_at", "status", "postings_scraped", "postings_new",
-        "domains_resolved", "prospects_found", "emails_found",
-        "emails_verified", "prospects_added", "drafts_created",
-        "csv_path", "errors", "error_message",
-    }),
-    "linkedin_messages": frozenset({
-        "message_type", "message_text", "status", "copied_at",
-        "sent_at", "replied_at", "notes", "prospect_id", "draft_id",
-    }),
-    "job_postings": frozenset({
-        "title", "company_name", "company_domain", "org_number",
-        "location", "url", "keyword_matched", "published_at",
-    }),
+    "email_drafts": frozenset(
+        {
+            "template_name",
+            "subject",
+            "body",
+            "status",
+            "approved_at",
+            "sent_at",
+            "opened_at",
+            "replied_at",
+            "notes",
+            "resend_id",
+            "open_count",
+            "click_count",
+            "sequence_step",
+            "parent_draft_id",
+            "variant_of",
+            "ai_context",
+            "scheduled_for",
+            "prospect_id",
+            "job_posting_id",
+        }
+    ),
+    "pipeline_runs": frozenset(
+        {
+            "finished_at",
+            "status",
+            "postings_scraped",
+            "postings_new",
+            "domains_resolved",
+            "prospects_found",
+            "emails_found",
+            "emails_verified",
+            "prospects_added",
+            "drafts_created",
+            "csv_path",
+            "errors",
+            "error_message",
+        }
+    ),
+    "linkedin_messages": frozenset(
+        {
+            "message_type",
+            "message_text",
+            "status",
+            "copied_at",
+            "sent_at",
+            "replied_at",
+            "notes",
+            "prospect_id",
+            "draft_id",
+        }
+    ),
+    "job_postings": frozenset(
+        {
+            "title",
+            "company_name",
+            "company_domain",
+            "org_number",
+            "location",
+            "url",
+            "keyword_matched",
+            "published_at",
+        }
+    ),
 }
 
 
@@ -374,7 +468,8 @@ def init_db() -> None:
 # Job postings
 # ------------------------------------------------------------------
 
-def insert_job_posting(data: dict) -> Optional[int]:
+
+def insert_job_posting(data: dict) -> int | None:
     """
     Insert a job posting. Returns new row id, or None if (source, external_id) already exists.
 
@@ -430,9 +525,7 @@ def update_job_posting(posting_id: int, data: dict) -> None:
     sets = [f"{key} = ?" for key in data]
     params = list(data.values()) + [posting_id]
     with get_connection() as conn:
-        conn.execute(
-            f"UPDATE job_postings SET {', '.join(sets)} WHERE id = ?", params
-        )
+        conn.execute(f"UPDATE job_postings SET {', '.join(sets)} WHERE id = ?", params)
 
 
 def get_job_postings(
@@ -446,7 +539,9 @@ def get_job_postings(
     params = []
 
     if search:
-        conditions.append("(title LIKE ? ESCAPE '\\' OR company_name LIKE ? ESCAPE '\\' OR location LIKE ? ESCAPE '\\')")
+        conditions.append(
+            "(title LIKE ? ESCAPE '\\' OR company_name LIKE ? ESCAPE '\\' OR location LIKE ? ESCAPE '\\')"
+        )
         params.extend([_like_contains(search)] * 3)
     if keyword:
         conditions.append("keyword_matched = ?")
@@ -496,7 +591,8 @@ def get_existing_external_ids(source: str) -> set:
 # Prospects
 # ------------------------------------------------------------------
 
-def insert_prospect(data: dict) -> Optional[int]:
+
+def insert_prospect(data: dict) -> int | None:
     """Insert a prospect. Returns new row id, or None if email already exists."""
     sql = """
         INSERT OR IGNORE INTO prospects
@@ -527,7 +623,7 @@ def email_exists(email: str) -> bool:
         return row is not None
 
 
-def get_prospect_by_email(email: str) -> Optional[dict]:
+def get_prospect_by_email(email: str) -> dict | None:
     with get_connection() as conn:
         row = conn.execute(
             "SELECT * FROM prospects WHERE email = ?", (email,)
@@ -535,7 +631,7 @@ def get_prospect_by_email(email: str) -> Optional[dict]:
         return dict(row) if row else None
 
 
-def get_prospect_by_id(prospect_id: int) -> Optional[dict]:
+def get_prospect_by_id(prospect_id: int) -> dict | None:
     with get_connection() as conn:
         row = conn.execute(
             "SELECT * FROM prospects WHERE id = ?", (prospect_id,)
@@ -578,7 +674,7 @@ def get_prospects_filtered(
                        jp.external_id as finn_id
                 FROM prospects p
                 LEFT JOIN job_postings jp ON p.job_posting_id = jp.id
-                {where.replace('full_name', 'p.full_name').replace('email LIKE', 'p.email LIKE').replace('company_name', 'p.company_name').replace('email_status', 'p.email_status').replace('position', 'p.position')}
+                {where.replace("full_name", "p.full_name").replace("email LIKE", "p.email LIKE").replace("company_name", "p.company_name").replace("email_status", "p.email_status").replace("position", "p.position")}
                 ORDER BY p.created_at DESC LIMIT ? OFFSET ?""",
             params + [limit, offset],
         ).fetchall()
@@ -615,6 +711,7 @@ def get_prospects_for_export() -> list[dict]:
 # Outreach log
 # ------------------------------------------------------------------
 
+
 def log_outreach(data: dict) -> None:
     sql = """
         INSERT INTO outreach_log
@@ -631,7 +728,8 @@ def log_outreach(data: dict) -> None:
 # Email drafts
 # ------------------------------------------------------------------
 
-def insert_email_draft(data: dict) -> Optional[int]:
+
+def insert_email_draft(data: dict) -> int | None:
     sql = """
         INSERT INTO email_drafts
             (prospect_id, job_posting_id, template_name,
@@ -693,7 +791,7 @@ def get_draft_status_counts() -> dict:
     return {r["status"]: r["cnt"] for r in rows}
 
 
-def get_email_draft_by_id(draft_id: int) -> Optional[dict]:
+def get_email_draft_by_id(draft_id: int) -> dict | None:
     with get_connection() as conn:
         row = conn.execute(
             """SELECT ed.*,
@@ -724,9 +822,7 @@ def update_email_draft(draft_id: int, data: dict) -> None:
     params.append(draft_id)
 
     with get_connection() as conn:
-        conn.execute(
-            f"UPDATE email_drafts SET {', '.join(sets)} WHERE id = ?", params
-        )
+        conn.execute(f"UPDATE email_drafts SET {', '.join(sets)} WHERE id = ?", params)
 
 
 def draft_exists_for_prospect(prospect_id: int) -> bool:
@@ -759,6 +855,7 @@ def get_approved_drafts_with_prospects() -> list[dict]:
 # Pipeline runs
 # ------------------------------------------------------------------
 
+
 def insert_pipeline_run(data: dict = None) -> int:
     data = data or {}
     data.setdefault("started_at", _now())
@@ -783,9 +880,7 @@ def update_pipeline_run(run_id: int, data: dict) -> None:
         params.append(val)
     params.append(run_id)
     with get_connection() as conn:
-        conn.execute(
-            f"UPDATE pipeline_runs SET {', '.join(sets)} WHERE id = ?", params
-        )
+        conn.execute(f"UPDATE pipeline_runs SET {', '.join(sets)} WHERE id = ?", params)
 
 
 def get_recent_pipeline_runs(limit: int = 10) -> list[dict]:
@@ -819,6 +914,7 @@ def get_pipeline_run_trends(days: int = 30) -> list[dict]:
 # Dashboard aggregation
 # ------------------------------------------------------------------
 
+
 def get_dashboard_stats() -> dict:
     with get_connection() as conn:
         total_postings = conn.execute("SELECT COUNT(*) FROM job_postings").fetchone()[0]
@@ -834,7 +930,7 @@ def get_dashboard_stats() -> dict:
             "SELECT COUNT(*) FROM email_drafts WHERE status = 'replied'"
         ).fetchone()[0]
 
-        today = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d")
+        today = datetime.now(UTC).replace(tzinfo=None).strftime("%Y-%m-%d")
         new_postings_today = conn.execute(
             "SELECT COUNT(*) FROM job_postings WHERE scraped_at LIKE ?",
             (f"{today}%",),
@@ -922,7 +1018,7 @@ def get_prospects_by_day(days: int = 30) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def get_job_posting_by_id(posting_id: int) -> Optional[dict]:
+def get_job_posting_by_id(posting_id: int) -> dict | None:
     with get_connection() as conn:
         row = conn.execute(
             "SELECT * FROM job_postings WHERE id = ?", (posting_id,)
@@ -986,7 +1082,8 @@ def delete_job_postings(posting_ids: list[int]) -> int:
 # Companies (BRREG data)
 # ------------------------------------------------------------------
 
-def insert_company(data: dict) -> Optional[int]:
+
+def insert_company(data: dict) -> int | None:
     """
     Insert a company from BRREG. Returns new row id, or None if org_number exists.
 
@@ -1014,12 +1111,14 @@ def insert_company(data: dict) -> Optional[int]:
     with get_connection() as conn:
         cur = conn.execute(sql, data)
         if cur.lastrowid and cur.rowcount:
-            logger.debug("Inserted company org=%s name=%s", data["org_number"], data["name"])
+            logger.debug(
+                "Inserted company org=%s name=%s", data["org_number"], data["name"]
+            )
             return cur.lastrowid
     return None
 
 
-def get_company_by_org_number(org_number: str) -> Optional[dict]:
+def get_company_by_org_number(org_number: str) -> dict | None:
     """Get company by organization number."""
     with get_connection() as conn:
         row = conn.execute(
@@ -1037,7 +1136,7 @@ def company_exists(org_number: str) -> bool:
         return row is not None
 
 
-def insert_company_role(data: dict) -> Optional[int]:
+def insert_company_role(data: dict) -> int | None:
     """
     Insert a company role (board member, CEO, etc.).
 
@@ -1110,18 +1209,20 @@ def get_companies_by_nace(nace_code: str, limit: int = 100) -> list[dict]:
 # Website cache
 # ------------------------------------------------------------------
 
-def get_cached_contacts(domain: str, ttl_days: int = 7) -> Optional[list]:
+
+def get_cached_contacts(domain: str, ttl_days: int = 7) -> list | None:
     """Return cached contacts for domain, or None if expired/missing."""
     import json
+
     with get_connection() as conn:
         row = conn.execute(
             "SELECT contacts_json, cached_at FROM website_cache WHERE domain = ?",
-            (domain,)
+            (domain,),
         ).fetchone()
     if not row:
         return None
     cached_at = datetime.fromisoformat(row["cached_at"])
-    age_days = (datetime.now(timezone.utc).replace(tzinfo=None) - cached_at).days
+    age_days = (datetime.now(UTC).replace(tzinfo=None) - cached_at).days
     if age_days > ttl_days:
         return None
     return json.loads(row["contacts_json"])
@@ -1130,6 +1231,7 @@ def get_cached_contacts(domain: str, ttl_days: int = 7) -> Optional[list]:
 def cache_contacts(domain: str, contacts: list) -> None:
     """Store or update cached contacts for a domain."""
     import json
+
     with get_connection() as conn:
         conn.execute(
             "INSERT OR REPLACE INTO website_cache (domain, contacts_json, cached_at) VALUES (?, ?, ?)",
@@ -1141,6 +1243,7 @@ def cache_contacts(domain: str, contacts: list) -> None:
 # Keywords
 # ------------------------------------------------------------------
 
+
 def get_keywords(active_only: bool = True) -> list[dict]:
     """Return all keywords (or only active ones)."""
     with get_connection() as conn:
@@ -1149,9 +1252,7 @@ def get_keywords(active_only: bool = True) -> list[dict]:
                 "SELECT * FROM keywords WHERE active = 1 ORDER BY keyword"
             ).fetchall()
         else:
-            rows = conn.execute(
-                "SELECT * FROM keywords ORDER BY keyword"
-            ).fetchall()
+            rows = conn.execute("SELECT * FROM keywords ORDER BY keyword").fetchall()
     return [dict(r) for r in rows]
 
 
@@ -1160,7 +1261,7 @@ def get_keyword_list() -> list[str]:
     return [kw["keyword"] for kw in get_keywords(active_only=True)]
 
 
-def add_keyword(keyword: str) -> Optional[int]:
+def add_keyword(keyword: str) -> int | None:
     """Add a new keyword. Returns id or None if it already exists."""
     keyword = keyword.strip().lower()
     if not keyword:
@@ -1212,7 +1313,8 @@ def seed_keywords_from_env(env_keywords: list[str]) -> int:
 # Email Events (F1 — Resend webhook tracking)
 # ------------------------------------------------------------------
 
-def insert_email_event(data: dict) -> Optional[int]:
+
+def insert_email_event(data: dict) -> int | None:
     """Insert a Resend webhook event. Returns event id."""
     sql = """
         INSERT INTO email_events (draft_id, resend_id, event_type, payload, created_at)
@@ -1244,7 +1346,7 @@ def get_email_events_by_resend_id(resend_id: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def get_draft_id_by_resend_id(resend_id: str) -> Optional[int]:
+def get_draft_id_by_resend_id(resend_id: str) -> int | None:
     """Look up draft_id from a Resend email ID."""
     with get_connection() as conn:
         row = conn.execute(
@@ -1310,7 +1412,10 @@ def get_engagement_timeline(days: int = 30) -> list[dict]:
 # Follow-up Sequences (F3)
 # ------------------------------------------------------------------
 
-def get_sent_drafts_needing_followup(min_days: int = 3, max_step: int = 3) -> list[dict]:
+
+def get_sent_drafts_needing_followup(
+    min_days: int = 3, max_step: int = 3
+) -> list[dict]:
     """Get drafts sent via Resend that had no open event and need a follow-up.
 
     Returns drafts where:
@@ -1360,7 +1465,8 @@ def get_draft_sequence(prospect_id: int) -> list[dict]:
 # LinkedIn Messages (F4)
 # ------------------------------------------------------------------
 
-def insert_linkedin_message(data: dict) -> Optional[int]:
+
+def insert_linkedin_message(data: dict) -> int | None:
     """Insert a LinkedIn message. Returns message id."""
     sql = """
         INSERT INTO linkedin_messages
@@ -1385,7 +1491,7 @@ def get_linkedin_messages_by_prospect(prospect_id: int) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def get_linkedin_message_by_draft(draft_id: int) -> Optional[dict]:
+def get_linkedin_message_by_draft(draft_id: int) -> dict | None:
     """Get LinkedIn message associated with a draft."""
     with get_connection() as conn:
         row = conn.execute(
@@ -1415,6 +1521,7 @@ def update_linkedin_message(message_id: int, data: dict) -> None:
 # ------------------------------------------------------------------
 # Suppression list (never send to these addresses)
 # ------------------------------------------------------------------
+
 
 def add_suppression(email: str, reason: str = "bounce") -> None:
     """Add an address to the suppression list (idempotent)."""
@@ -1509,6 +1616,7 @@ def get_linkedin_messages_list(
 # AI Variants (F5)
 # ------------------------------------------------------------------
 
+
 def get_draft_variants(draft_id: int) -> list[dict]:
     """Get all variant drafts for a given draft."""
     with get_connection() as conn:
@@ -1526,6 +1634,7 @@ def get_draft_variants(draft_id: int) -> list[dict]:
 # ------------------------------------------------------------------
 # A/B Testing (C1)
 # ------------------------------------------------------------------
+
 
 def get_ab_test_groups() -> list[dict]:
     """Get all drafts that have variants, grouped with engagement stats."""
@@ -1566,8 +1675,10 @@ def get_ab_test_groups() -> list[dict]:
             parent["variant_count"] = len(parent["variants"])
 
             # Determine winner (highest open_count)
-            best = max(parent["variants"], key=lambda v: (v.get("open_count") or 0))
-            parent["winner_id"] = best["id"] if (best.get("open_count") or 0) > 0 else None
+            best = max(parent["variants"], key=lambda v: v.get("open_count") or 0)
+            parent["winner_id"] = (
+                best["id"] if (best.get("open_count") or 0) > 0 else None
+            )
 
             results.append(parent)
 
@@ -1606,7 +1717,8 @@ def get_ab_test_results(parent_draft_id: int) -> dict:
 # CRM Pipeline (C2)
 # ------------------------------------------------------------------
 
-def get_prospect_stage(prospect_id: int) -> Optional[dict]:
+
+def get_prospect_stage(prospect_id: int) -> dict | None:
     """Get current pipeline stage for a prospect."""
     with get_connection() as conn:
         row = conn.execute(
@@ -1690,8 +1802,20 @@ def auto_move_prospect_stage(prospect_id: int, event_type: str) -> None:
     current = get_prospect_stage(prospect_id)
     if current:
         # Don't move backwards
-        stage_order = ["New", "Contacted", "Opened", "Replied", "Meeting", "Won", "Lost"]
-        current_idx = stage_order.index(current["stage"]) if current["stage"] in stage_order else 0
+        stage_order = [
+            "New",
+            "Contacted",
+            "Opened",
+            "Replied",
+            "Meeting",
+            "Won",
+            "Lost",
+        ]
+        current_idx = (
+            stage_order.index(current["stage"])
+            if current["stage"] in stage_order
+            else 0
+        )
         new_idx = stage_order.index(new_stage) if new_stage in stage_order else 0
         if new_idx <= current_idx:
             return
@@ -1702,6 +1826,7 @@ def auto_move_prospect_stage(prospect_id: int, event_type: str) -> None:
 # ------------------------------------------------------------------
 # Intent Signals (C3)
 # ------------------------------------------------------------------
+
 
 def get_company_intent_signals(domain: str) -> dict:
     """Calculate hiring intent signals for a company domain."""
@@ -1790,7 +1915,8 @@ def get_hot_prospects(limit: int = 10) -> list[dict]:
 # Prospect Profile (C4)
 # ------------------------------------------------------------------
 
-def get_prospect_full_profile(prospect_id: int) -> Optional[dict]:
+
+def get_prospect_full_profile(prospect_id: int) -> dict | None:
     """Get comprehensive prospect profile with all related data."""
     with get_connection() as conn:
         prospect = conn.execute(
@@ -1855,5 +1981,3 @@ def get_prospect_full_profile(prospect_id: int) -> Optional[dict]:
         prospect["current_stage"] = dict(stage) if stage else None
 
     return prospect
-
-

@@ -4,8 +4,9 @@ Creates ONE Playwright browser instance for the entire pipeline run.
 Supports optional proxy and stealth mode.
 """
 
-import os
 import logging
+import os
+
 from playwright.sync_api import sync_playwright
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,7 @@ def apply_stealth_to_context(ctx) -> bool:
     """Apply playwright-stealth evasions to a context. Returns True if applied."""
     try:
         from playwright_stealth import Stealth
+
         Stealth().apply_stealth_sync(ctx)
         logger.debug("Stealth evasions applied to browser context")
         return True
@@ -29,6 +31,7 @@ def apply_stealth_to_context(ctx) -> bool:
         pass
     try:
         from playwright_stealth import stealth_sync  # legacy 1.x API
+
         stealth_sync(ctx)
         logger.debug("Stealth evasions applied (legacy API)")
         return True

@@ -7,9 +7,8 @@ Member companies are high-quality targets for recruiting.
 """
 
 import logging
-import re
-from typing import Optional
 from urllib.parse import urlparse
+
 from playwright.sync_api import TimeoutError as PWTimeout
 
 from src.scraper.base import browser_context
@@ -19,13 +18,13 @@ logger = logging.getLogger(__name__)
 NCE_MEMBERS_URL = "https://seafoodinnovation.no/our-partners-and-members/"
 
 
-def _clean_domain(url: str) -> Optional[str]:
+def _clean_domain(url: str) -> str | None:
     """Extract clean domain from URL."""
     if not url:
         return None
     try:
         parsed = urlparse(url if url.startswith("http") else f"https://{url}")
-        domain = parsed.netloc.lstrip("www.")
+        domain = parsed.netloc.removeprefix("www.")
         return domain if domain else None
     except Exception:
         return None
@@ -73,33 +72,49 @@ def _scrape_page(page, results):
 
             if not text or len(text) < 3:
                 continue
-            if any(skip in href.lower() for skip in [
-                "facebook", "linkedin", "twitter", "instagram",
-                "seafoodinnovation.no", "youtube", "vimeo"
-            ]):
+            if any(
+                skip in href.lower()
+                for skip in [
+                    "facebook",
+                    "linkedin",
+                    "twitter",
+                    "instagram",
+                    "seafoodinnovation.no",
+                    "youtube",
+                    "vimeo",
+                ]
+            ):
                 continue
 
             domain = _clean_domain(href)
             if domain:
-                results.append({
-                    "name": text,
-                    "website": href,
-                    "domain": domain,
-                    "description": "",
-                    "category": "member",
-                })
+                results.append(
+                    {
+                        "name": text,
+                        "website": href,
+                        "domain": domain,
+                        "description": "",
+                        "category": "member",
+                    }
+                )
 
     # Strategy 3: Parse member cards if found
     else:
         for element in members_found:
             try:
                 name = ""
-                name_el = element.query_selector("h2, h3, h4, strong, .name, [class*='title']")
+                name_el = element.query_selector(
+                    "h2, h3, h4, strong, .name, [class*='title']"
+                )
                 if name_el:
                     name = name_el.inner_text().strip()
 
                 if not name:
-                    text_lines = [l.strip() for l in element.inner_text().split("\n") if l.strip()]
+                    text_lines = [
+                        line.strip()
+                        for line in element.inner_text().split("\n")
+                        if line.strip()
+                    ]
                     if text_lines:
                         name = text_lines[0]
 
@@ -115,13 +130,15 @@ def _scrape_page(page, results):
 
                 if name:
                     domain = _clean_domain(website)
-                    results.append({
-                        "name": name,
-                        "website": website,
-                        "domain": domain,
-                        "description": description,
-                        "category": "member",
-                    })
+                    results.append(
+                        {
+                            "name": name,
+                            "website": website,
+                            "domain": domain,
+                            "description": description,
+                            "category": "member",
+                        }
+                    )
 
             except Exception as exc:
                 logger.debug("Error parsing member element: %s", exc)

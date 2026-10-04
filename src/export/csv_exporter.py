@@ -7,9 +7,8 @@ Manual export is available from the web dashboard.
 import csv
 import io
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 from src.database import db
 
@@ -77,21 +76,24 @@ def _ensure_exports_dir() -> Path:
 
 
 def _ts() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    return datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
 
 
 # ------------------------------------------------------------------
 # CSV
 # ------------------------------------------------------------------
 
-def export_prospects_csv(filename: str = None) -> Optional[str]:
+
+def export_prospects_csv(filename: str = None) -> str | None:
     """Export all prospects to CSV file. Returns path or None."""
     try:
         out_dir = _ensure_exports_dir()
         filepath = out_dir / (filename or f"prospects_{_ts()}.csv")
         rows = db.get_prospects_for_export()
         with open(filepath, "w", newline="", encoding="utf-8-sig") as f:
-            writer = csv.DictWriter(f, fieldnames=PROSPECT_COLUMNS, extrasaction="ignore")
+            writer = csv.DictWriter(
+                f, fieldnames=PROSPECT_COLUMNS, extrasaction="ignore"
+            )
             writer.writeheader()
             for row in rows:
                 writer.writerow(row)
@@ -102,14 +104,16 @@ def export_prospects_csv(filename: str = None) -> Optional[str]:
         return None
 
 
-def export_postings_csv(filename: str = None) -> Optional[str]:
+def export_postings_csv(filename: str = None) -> str | None:
     """Export all job postings to CSV file. Returns path or None."""
     try:
         out_dir = _ensure_exports_dir()
         filepath = out_dir / (filename or f"postings_{_ts()}.csv")
         rows = db.get_postings_for_export()
         with open(filepath, "w", newline="", encoding="utf-8-sig") as f:
-            writer = csv.DictWriter(f, fieldnames=POSTING_COLUMNS, extrasaction="ignore")
+            writer = csv.DictWriter(
+                f, fieldnames=POSTING_COLUMNS, extrasaction="ignore"
+            )
             writer.writeheader()
             for row in rows:
                 writer.writerow(row)
@@ -128,7 +132,8 @@ def stream_prospects_csv():
     writer.writeheader()
     yield buf.getvalue().encode("utf-8-sig")
     for row in rows:
-        buf.seek(0); buf.truncate()
+        buf.seek(0)
+        buf.truncate()
         writer.writerow(row)
         yield buf.getvalue().encode("utf-8")
 
@@ -141,7 +146,8 @@ def stream_postings_csv():
     writer.writeheader()
     yield buf.getvalue().encode("utf-8-sig")
     for row in rows:
-        buf.seek(0); buf.truncate()
+        buf.seek(0)
+        buf.truncate()
         writer.writerow(row)
         yield buf.getvalue().encode("utf-8")
 
@@ -150,9 +156,10 @@ def stream_postings_csv():
 # Excel (.xlsx)
 # ------------------------------------------------------------------
 
+
 def _style_xlsx_header(ws, columns: list[str]):
     """Apply header styling to the first row of an openpyxl worksheet."""
-    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
     header_fill = PatternFill("solid", fgColor="1E3A5F")
     header_font = Font(bold=True, color="FFFFFF", size=10)
@@ -164,16 +171,18 @@ def _style_xlsx_header(ws, columns: list[str]):
         cell.value = col_name
         cell.fill = header_fill
         cell.font = header_font
-        cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=False)
+        cell.alignment = Alignment(
+            horizontal="left", vertical="center", wrap_text=False
+        )
         cell.border = border
 
 
 def _style_xlsx_rows(ws, num_cols: int, num_rows: int):
     """Apply alternating row colours and borders."""
-    from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
     even_fill = PatternFill("solid", fgColor="F0F4F8")
-    odd_fill  = PatternFill("solid", fgColor="FFFFFF")
+    odd_fill = PatternFill("solid", fgColor="FFFFFF")
     normal_font = Font(size=9)
     thin = Side(style="thin", color="E2E8F0")
     border = Border(bottom=thin)
@@ -251,17 +260,24 @@ def build_postings_xlsx() -> bytes:
 # PDF
 # ------------------------------------------------------------------
 
+
 def _pdf_table(data: list[list], col_widths: list, title: str, subtitle: str) -> bytes:
     """
     Build a styled PDF with a title and a data table.
     Returns PDF bytes.
     """
     from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4, landscape
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.units import mm
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
     from reportlab.lib.enums import TA_LEFT
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.platypus import (
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+        Table,
+        TableStyle,
+    )
 
     buf = io.BytesIO()
     page = landscape(A4)
@@ -300,34 +316,42 @@ def _pdf_table(data: list[list], col_widths: list, title: str, subtitle: str) ->
 
     # Wrap cell text in Paragraphs so long values wrap properly
     header_row = data[0]
-    body_rows  = data[1:]
+    body_rows = data[1:]
 
     table_data = [header_row]
     for row in body_rows:
-        table_data.append([
-            Paragraph(str(cell) if cell else "", cell_style)
-            for cell in row
-        ])
+        table_data.append(
+            [Paragraph(str(cell) if cell else "", cell_style) for cell in row]
+        )
 
     tbl = Table(table_data, colWidths=col_widths, repeatRows=1)
-    tbl.setStyle(TableStyle([
-        # Header
-        ("BACKGROUND",  (0, 0), (-1, 0), colors.HexColor("#1E3A5F")),
-        ("TEXTCOLOR",   (0, 0), (-1, 0), colors.white),
-        ("FONTNAME",    (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE",    (0, 0), (-1, 0), 7),
-        ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
-        ("TOPPADDING",    (0, 0), (-1, 0), 6),
-        # Body
-        ("FONTNAME",    (0, 1), (-1, -1), "Helvetica"),
-        ("FONTSIZE",    (0, 1), (-1, -1), 7),
-        ("TOPPADDING",    (0, 1), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 1), (-1, -1), 3),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F0F4F8")]),
-        # Grid
-        ("GRID",        (0, 0), (-1, -1), 0.25, colors.HexColor("#CBD5E1")),
-        ("VALIGN",      (0, 0), (-1, -1), "TOP"),
-    ]))
+    tbl.setStyle(
+        TableStyle(
+            [
+                # Header
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E3A5F")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, 0), 7),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
+                ("TOPPADDING", (0, 0), (-1, 0), 6),
+                # Body
+                ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+                ("FONTSIZE", (0, 1), (-1, -1), 7),
+                ("TOPPADDING", (0, 1), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 1), (-1, -1), 3),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 1),
+                    (-1, -1),
+                    [colors.white, colors.HexColor("#F0F4F8")],
+                ),
+                # Grid
+                ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#CBD5E1")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
 
     story = [
         Paragraph(title, title_style),
@@ -344,14 +368,25 @@ def build_prospects_pdf() -> bytes:
     from reportlab.lib.units import mm
 
     rows = db.get_prospects_for_export()
-    ts = datetime.now(timezone.utc).strftime("%d.%m.%Y %H:%M")
+    ts = datetime.now(UTC).strftime("%d.%m.%Y %H:%M")
 
     data = [PROSPECT_HEADERS]
     for row in rows:
         data.append([row.get(col, "") or "" for col in PROSPECT_COLUMNS])
 
     # Column widths in mm (landscape A4 = ~277mm usable)
-    col_widths = [22*mm, 34*mm, 28*mm, 28*mm, 38*mm, 26*mm, 42*mm, 16*mm, 18*mm, 20*mm]
+    col_widths = [
+        22 * mm,
+        34 * mm,
+        28 * mm,
+        28 * mm,
+        38 * mm,
+        26 * mm,
+        42 * mm,
+        16 * mm,
+        18 * mm,
+        20 * mm,
+    ]
 
     return _pdf_table(
         data,
@@ -366,14 +401,25 @@ def build_postings_pdf() -> bytes:
     from reportlab.lib.units import mm
 
     rows = db.get_postings_for_export()
-    ts = datetime.now(timezone.utc).strftime("%d.%m.%Y %H:%M")
+    ts = datetime.now(UTC).strftime("%d.%m.%Y %H:%M")
 
     data = [POSTING_HEADERS]
     for row in rows:
         data.append([row.get(col, "") or "" for col in POSTING_COLUMNS])
 
     # Column widths in mm (landscape A4 = ~277mm usable)
-    col_widths = [12*mm, 16*mm, 42*mm, 30*mm, 24*mm, 20*mm, 16*mm, 20*mm, 20*mm, 50*mm]
+    col_widths = [
+        12 * mm,
+        16 * mm,
+        42 * mm,
+        30 * mm,
+        24 * mm,
+        20 * mm,
+        16 * mm,
+        20 * mm,
+        20 * mm,
+        50 * mm,
+    ]
 
     return _pdf_table(
         data,
@@ -387,7 +433,8 @@ def build_postings_pdf() -> bytes:
 # Auto-export (pipeline hook)
 # ------------------------------------------------------------------
 
-def auto_export_after_run() -> Optional[str]:
+
+def auto_export_after_run() -> str | None:
     """Called at the end of a pipeline run. Saves CSV + XLSX."""
     csv_path = export_prospects_csv()
     try:

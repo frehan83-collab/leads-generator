@@ -7,7 +7,11 @@ Step 3: Different angle with social proof (6 days after step 2)
 
 def follow_up_1(prospect: dict, original_subject: str) -> tuple[str, str]:
     """Step 2 — gentle nudge, references original email."""
-    first_name = prospect.get("first_name") or prospect.get("full_name", "").split()[0] if prospect.get("full_name") else ""
+    first_name = (
+        prospect.get("first_name") or prospect.get("full_name", "").split()[0]
+        if prospect.get("full_name")
+        else ""
+    )
     company = prospect.get("company_name", "")
 
     subject = f"Re: {original_subject}"
@@ -29,9 +33,12 @@ Sperton Rekruttering
 
 def follow_up_2(prospect: dict, original_subject: str) -> tuple[str, str]:
     """Step 3 — different angle, value-add with social proof."""
-    first_name = prospect.get("first_name") or prospect.get("full_name", "").split()[0] if prospect.get("full_name") else ""
+    first_name = (
+        prospect.get("first_name") or prospect.get("full_name", "").split()[0]
+        if prospect.get("full_name")
+        else ""
+    )
     company = prospect.get("company_name", "")
-    position = prospect.get("position", prospect.get("prospect_title", ""))
 
     subject = f"Re: {original_subject}"
     body = f"""Hei {first_name},

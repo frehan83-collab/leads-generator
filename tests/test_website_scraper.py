@@ -1,13 +1,12 @@
 """Tests for website email scraper."""
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 from src.scraper.website_scraper import (
+    _extract_title_from_text,
     _is_valid_email,
     _score_email,
-    _extract_title_from_text,
     scrape_emails_from_website,
-    SKIP_PREFIXES,
 )
 
 
@@ -102,14 +101,21 @@ class TestScrapeEmailsFromWebsite:
         mock_ctx = MagicMock()
         mock_page = MagicMock()
         mock_ctx.new_page.return_value = mock_page
-        with patch("src.scraper.website_scraper.browser_context") as mock_bc, \
-             patch("src.scraper.website_scraper._scrape_fast", lambda *a, **k: None), \
-             patch("src.scraper.website_scraper._fetch_robots_disallows", return_value=[]):
+        with (
+            patch("src.scraper.website_scraper.browser_context") as mock_bc,
+            patch("src.scraper.website_scraper._scrape_fast", lambda *a, **k: None),
+            patch(
+                "src.scraper.website_scraper._fetch_robots_disallows", return_value=[]
+            ),
+        ):
             mock_bc.return_value.__enter__.return_value = mock_ctx
 
             # evaluate() returns mailto contacts with context
             mock_page.evaluate.return_value = [
-                {"email": "john.doe@testco.no", "context": "John Doe\nCEO\njohn.doe@testco.no"},
+                {
+                    "email": "john.doe@testco.no",
+                    "context": "John Doe\nCEO\njohn.doe@testco.no",
+                },
                 {"email": "noreply@testco.no", "context": ""},  # should be filtered
             ]
             mock_page.inner_text.return_value = ""
@@ -125,9 +131,13 @@ class TestScrapeEmailsFromWebsite:
         mock_ctx = MagicMock()
         mock_page = MagicMock()
         mock_ctx.new_page.return_value = mock_page
-        with patch("src.scraper.website_scraper.browser_context") as mock_bc, \
-             patch("src.scraper.website_scraper._scrape_fast", lambda *a, **k: None), \
-             patch("src.scraper.website_scraper._fetch_robots_disallows", return_value=[]):
+        with (
+            patch("src.scraper.website_scraper.browser_context") as mock_bc,
+            patch("src.scraper.website_scraper._scrape_fast", lambda *a, **k: None),
+            patch(
+                "src.scraper.website_scraper._fetch_robots_disallows", return_value=[]
+            ),
+        ):
             mock_bc.return_value.__enter__.return_value = mock_ctx
             mock_page.evaluate.return_value = [
                 {"email": "noreply@testco.no", "context": ""},
@@ -142,9 +152,13 @@ class TestScrapeEmailsFromWebsite:
         mock_ctx = MagicMock()
         mock_page = MagicMock()
         mock_ctx.new_page.return_value = mock_page
-        with patch("src.scraper.website_scraper.browser_context") as mock_bc, \
-             patch("src.scraper.website_scraper._scrape_fast", lambda *a, **k: None), \
-             patch("src.scraper.website_scraper._fetch_robots_disallows", return_value=[]):
+        with (
+            patch("src.scraper.website_scraper.browser_context") as mock_bc,
+            patch("src.scraper.website_scraper._scrape_fast", lambda *a, **k: None),
+            patch(
+                "src.scraper.website_scraper._fetch_robots_disallows", return_value=[]
+            ),
+        ):
             mock_bc.return_value.__enter__.return_value = mock_ctx
             mock_page.evaluate.return_value = [
                 {
@@ -180,9 +194,12 @@ class TestFastPath:
 
     def test_fast_path_finds_personal_email_without_browser(self):
         from src.scraper import website_scraper as ws
-        with patch.object(ws.requests, "Session", return_value=self._mock_session()), \
-             patch.object(ws, "_fetch_robots_disallows", return_value=[]), \
-             patch.object(ws, "browser_context") as mock_bc:
+
+        with (
+            patch.object(ws.requests, "Session", return_value=self._mock_session()),
+            patch.object(ws, "_fetch_robots_disallows", return_value=[]),
+            patch.object(ws, "browser_context") as mock_bc,
+        ):
             result = ws.scrape_emails_from_website("testco.no")
         emails = [r["email"] for r in result]
         assert "ola.nordmann@testco.no" in emails
@@ -191,11 +208,14 @@ class TestFastPath:
 
     def test_fast_path_filters_skip_prefixes(self):
         from src.scraper import website_scraper as ws
+
         html = '<html><body><a href="mailto:noreply@testco.no">x</a></body></html>'
-        with patch.object(ws.requests, "Session", return_value=self._mock_session(html)), \
-             patch.object(ws, "_fetch_robots_disallows", return_value=[]), \
-             patch.object(ws, "browser_context") as mock_bc, \
-             patch.object(ws, "_scrape_pages", lambda *a, **k: None):
+        with (
+            patch.object(ws.requests, "Session", return_value=self._mock_session(html)),
+            patch.object(ws, "_fetch_robots_disallows", return_value=[]),
+            patch.object(ws, "browser_context") as mock_bc,
+            patch.object(ws, "_scrape_pages", lambda *a, **k: None),
+        ):
             result = ws.scrape_emails_from_website("testco.no")
         assert "noreply@testco.no" not in [r["email"] for r in result]
         # nothing personal found → browser fallback still attempted
@@ -203,15 +223,19 @@ class TestFastPath:
 
     def test_robots_site_block_skips_entirely(self):
         from src.scraper import website_scraper as ws
-        with patch.object(ws, "_fetch_robots_disallows", return_value=["/"]), \
-             patch.object(ws, "browser_context") as mock_bc, \
-             patch.object(ws.requests, "Session") as mock_session:
+
+        with (
+            patch.object(ws, "_fetch_robots_disallows", return_value=["/"]),
+            patch.object(ws, "browser_context") as mock_bc,
+            patch.object(ws.requests, "Session") as mock_session,
+        ):
             assert ws.scrape_emails_from_website("testco.no") == []
         mock_bc.assert_not_called()
         mock_session.assert_not_called()
 
     def test_robots_path_filter(self):
         from src.scraper.website_scraper import _path_allowed
+
         assert _path_allowed("/kontakt", ["/admin", "/private"]) is True
         assert _path_allowed("/admin/users", ["/admin"]) is False
         assert _path_allowed("/kontakt", None) is True

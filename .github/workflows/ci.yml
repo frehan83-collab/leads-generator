@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
 
 jobs:
   test:
@@ -17,40 +17,24 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-          cache: 'pip'
+          python-version: "3.12"
+          cache: pip
 
-      - name: Install core dependencies
+      - name: Install dependencies
         run: |
-          pip install \
-            playwright \
-            playwright-stealth \
-            rapidfuzz \
-            anthropic \
-            requests \
-            schedule \
-            python-dotenv \
-            colorlog \
-            pytest \
-            pytest-asyncio \
-            flask \
-            openpyxl \
-            reportlab \
-            pdfplumber \
-            Pillow \
-            pandas \
-            PyPDF2
-
-      - name: Install Playwright browsers
-        run: playwright install chromium --with-deps
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
 
       - name: Create dummy .env for tests
         run: |
           echo "SNOV_CLIENT_ID=dummy" >> .env
           echo "SNOV_CLIENT_SECRET=dummy" >> .env
           echo "RUN_TIME=09:30" >> .env
-          echo "KEYWORDS=HR,rekruttering" >> .env
+          echo "FINN_KEYWORDS=seafood" >> .env
           echo "ANTHROPIC_API_KEY=dummy" >> .env
 
+      - name: Lint (ruff check)
+        run: ruff check src tests
+
       - name: Run tests
-        run: pytest tests/ -v --tb=short
+        run: pytest tests/ -q --tb=short

@@ -5,12 +5,12 @@ Uses Playwright for reliable rendering of dynamic content.
 
 import logging
 import re
-from datetime import datetime, timezone
-from typing import Generator
-
+from collections.abc import Generator
+from datetime import UTC, datetime
 from urllib.parse import urlparse
 
-from playwright.sync_api import Page, TimeoutError as PWTimeout
+from playwright.sync_api import Page
+from playwright.sync_api import TimeoutError as PWTimeout
 
 from src.scraper.base import (
     accept_cookies,
@@ -50,8 +50,12 @@ def scrape_company_domain(posting_url: str, browser=None) -> str | None:
                 href = link_el.get_attribute("href") or ""
                 if href:
                     parsed = urlparse(href)
-                    domain = parsed.netloc.lstrip("www.")
-                    logger.debug("Found domain from finn.no posting: %s -> %s", posting_url, domain)
+                    domain = parsed.netloc.removeprefix("www.")
+                    logger.debug(
+                        "Found domain from finn.no posting: %s -> %s",
+                        posting_url,
+                        domain,
+                    )
                     return domain
     except Exception as exc:
         logger.debug("scrape_company_domain error for %s: %s", posting_url, exc)
@@ -82,8 +86,9 @@ def _extract_finn_id(url: str) -> str:
 def _parse_relative_date(text: str) -> str | None:
     """Parse Norwegian relative date strings to ISO date."""
     from datetime import timedelta
+
     text = text.strip().lower()
-    today = datetime.now(timezone.utc).replace(tzinfo=None)
+    today = datetime.now(UTC).replace(tzinfo=None)
 
     if text in ("i dag", "today"):
         return today.strftime("%Y-%m-%d")
@@ -144,11 +149,15 @@ def _parse_listing_page(page: Page, keyword: str) -> list[dict]:
                 title = title_el.inner_text().strip() if title_el else ""
 
             # Company — .text-caption.s-text-subtle or <strong>
-            company_el = article.query_selector(".text-caption.s-text-subtle, .s-text-subtle strong, strong")
+            company_el = article.query_selector(
+                ".text-caption.s-text-subtle, .s-text-subtle strong, strong"
+            )
             company = company_el.inner_text().strip() if company_el else ""
 
             # Location — inside the pill list
-            location_el = article.query_selector("li.min-w-0 span, .job-card__pills li:first-child span")
+            location_el = article.query_selector(
+                "li.min-w-0 span, .job-card__pills li:first-child span"
+            )
             location = location_el.inner_text().strip() if location_el else ""
 
             # Published date
@@ -165,19 +174,21 @@ def _parse_listing_page(page: Page, keyword: str) -> list[dict]:
             if not title:
                 continue
 
-            results.append({
-                "finn_id": finn_id,
-                "external_id": finn_id,
-                "source": "finn",
-                "title": title,
-                "company_name": company,
-                "company_domain": None,
-                "org_number": None,
-                "location": location,
-                "url": href,
-                "keyword_matched": keyword,
-                "published_at": published_at,
-            })
+            results.append(
+                {
+                    "finn_id": finn_id,
+                    "external_id": finn_id,
+                    "source": "finn",
+                    "title": title,
+                    "company_name": company,
+                    "company_domain": None,
+                    "org_number": None,
+                    "location": location,
+                    "url": href,
+                    "keyword_matched": keyword,
+                    "published_at": published_at,
+                }
+            )
         except Exception as exc:
             logger.debug("Error parsing article: %s", exc)
             continue
@@ -197,7 +208,9 @@ def _has_next_page(page: Page, current_page: int) -> bool:
     return False
 
 
-def scrape_keyword(keyword: str, max_pages: int = 5, browser=None, known_ids: set = None) -> Generator[dict, None, None]:
+def scrape_keyword(
+    keyword: str, max_pages: int = 5, browser=None, known_ids: set = None
+) -> Generator[dict, None, None]:
     """
     Scrape finn.no for a given keyword across multiple pages.
     Yields one dict per job posting.
@@ -229,14 +242,23 @@ def scrape_keyword(keyword: str, max_pages: int = 5, browser=None, known_ids: se
 
                 postings = _parse_listing_page(page, keyword)
                 if not postings:
-                    logger.info("No results on page %d for '%s', stopping.", page_num, keyword)
+                    logger.info(
+                        "No results on page %d for '%s', stopping.", page_num, keyword
+                    )
                     break
 
                 # Incremental: skip already-known postings
                 if known_ids is not None:
-                    new_postings = [p for p in postings if p["external_id"] not in known_ids]
+                    new_postings = [
+                        p for p in postings if p["external_id"] not in known_ids
+                    ]
                     if len(new_postings) == 0:
-                        logger.info("All %d postings on page %d already known for '%s', stopping early.", len(postings), page_num, keyword)
+                        logger.info(
+                            "All %d postings on page %d already known for '%s', stopping early.",
+                            len(postings),
+                            page_num,
+                            keyword,
+                        )
                         break
                     postings = new_postings
 
@@ -245,7 +267,9 @@ def scrape_keyword(keyword: str, max_pages: int = 5, browser=None, known_ids: se
                     total += 1
 
                 if not _has_next_page(page, page_num):
-                    logger.debug("No next page after page %d for '%s'", page_num, keyword)
+                    logger.debug(
+                        "No next page after page %d for '%s'", page_num, keyword
+                    )
                     break
 
             except PWTimeout:
@@ -261,7 +285,9 @@ def scrape_keyword(keyword: str, max_pages: int = 5, browser=None, known_ids: se
     logger.info("Scraped %d postings for keyword '%s'", total, keyword)
 
 
-def scrape_all_keywords(keywords: list[str], max_pages: int = 5, browser=None, known_ids: set = None) -> Generator[dict, None, None]:
+def scrape_all_keywords(
+    keywords: list[str], max_pages: int = 5, browser=None, known_ids: set = None
+) -> Generator[dict, None, None]:
     """
     Scrape finn.no for all keywords. Deduplicates by finn_id across keywords.
 
@@ -273,11 +299,15 @@ def scrape_all_keywords(keywords: list[str], max_pages: int = 5, browser=None, k
     """
     seen_ids: set[str] = set()
     for keyword in keywords:
-        for posting in scrape_keyword(keyword.strip(), max_pages=max_pages, browser=browser, known_ids=known_ids):
+        for posting in scrape_keyword(
+            keyword.strip(), max_pages=max_pages, browser=browser, known_ids=known_ids
+        ):
             finn_id = posting["finn_id"]
             if finn_id not in seen_ids:
                 seen_ids.add(finn_id)
-                posting["scraped_at"] = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+                posting["scraped_at"] = (
+                    datetime.now(UTC).replace(tzinfo=None).isoformat()
+                )
                 yield posting
             else:
                 logger.debug("Duplicate finn_id=%s skipped", finn_id)

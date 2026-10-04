@@ -3,10 +3,9 @@ Tests for the database module.
 Uses a temporary in-memory database.
 """
 
-import sqlite3
-import pytest
 from unittest.mock import patch
-from pathlib import Path
+
+import pytest
 
 import src.database.db as db_module
 
@@ -70,17 +69,19 @@ def test_insert_job_posting_duplicate_ignored():
 
 def test_insert_prospect_and_email_exists():
     # Need a job posting first
-    db_module.insert_job_posting({
-        "finn_id": "55555",
-        "title": "Job",
-        "company_name": "Corp",
-        "company_domain": "corp.no",
-        "location": "",
-        "url": "",
-        "keyword_matched": "seafood",
-        "published_at": None,
-        "scraped_at": "2024-01-01T00:00:00",
-    })
+    db_module.insert_job_posting(
+        {
+            "finn_id": "55555",
+            "title": "Job",
+            "company_name": "Corp",
+            "company_domain": "corp.no",
+            "location": "",
+            "url": "",
+            "keyword_matched": "seafood",
+            "published_at": None,
+            "scraped_at": "2024-01-01T00:00:00",
+        }
+    )
 
     prospect = {
         "job_posting_id": 1,
@@ -104,32 +105,36 @@ def test_insert_prospect_and_email_exists():
 
 
 def test_get_prospect_by_email():
-    db_module.insert_job_posting({
-        "finn_id": "77777",
-        "title": "Job",
-        "company_name": "Corp2",
-        "company_domain": "corp2.no",
-        "location": "",
-        "url": "",
-        "keyword_matched": "seafood",
-        "published_at": None,
-        "scraped_at": "2024-01-01T00:00:00",
-    })
-    db_module.insert_prospect({
-        "job_posting_id": 1,
-        "first_name": "Ole",
-        "last_name": "Hansen",
-        "full_name": "Ole Hansen",
-        "email": "ole@corp2.no",
-        "email_status": "valid",
-        "position": "CEO",
-        "company_name": "Corp2",
-        "company_domain": "corp2.no",
-        "linkedin_url": None,
-        "snov_prospect_id": None,
-        "snov_list_id": None,
-        "created_at": "2024-01-01T09:00:00",
-    })
+    db_module.insert_job_posting(
+        {
+            "finn_id": "77777",
+            "title": "Job",
+            "company_name": "Corp2",
+            "company_domain": "corp2.no",
+            "location": "",
+            "url": "",
+            "keyword_matched": "seafood",
+            "published_at": None,
+            "scraped_at": "2024-01-01T00:00:00",
+        }
+    )
+    db_module.insert_prospect(
+        {
+            "job_posting_id": 1,
+            "first_name": "Ole",
+            "last_name": "Hansen",
+            "full_name": "Ole Hansen",
+            "email": "ole@corp2.no",
+            "email_status": "valid",
+            "position": "CEO",
+            "company_name": "Corp2",
+            "company_domain": "corp2.no",
+            "linkedin_url": None,
+            "snov_prospect_id": None,
+            "snov_list_id": None,
+            "created_at": "2024-01-01T09:00:00",
+        }
+    )
     result = db_module.get_prospect_by_email("ole@corp2.no")
     assert result is not None
     assert result["first_name"] == "Ole"

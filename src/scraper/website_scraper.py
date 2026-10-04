@@ -16,7 +16,6 @@ Strategy:
 import logging
 import re
 import time as _time
-from typing import Optional
 
 import requests
 from playwright.sync_api import TimeoutError as PWTimeout
@@ -28,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 # Pages to check for contact info (relative paths)
 CONTACT_PATHS = [
-    "",           # home page
+    "",  # home page
     "/kontakt",
     "/kontakt-oss",
     "/contact",
@@ -51,28 +50,59 @@ EMAIL_PATTERN = re.compile(
 
 # Emails to skip — non-personal / automated / support
 SKIP_PREFIXES = {
-    "noreply", "no-reply", "donotreply", "do-not-reply",
-    "support", "help", "helpdesk",
-    "webmaster", "hostmaster", "postmaster", "abuse",
-    "bounce", "mailer-daemon",
-    "newsletter", "unsubscribe", "subscribe",
+    "noreply",
+    "no-reply",
+    "donotreply",
+    "do-not-reply",
+    "support",
+    "help",
+    "helpdesk",
+    "webmaster",
+    "hostmaster",
+    "postmaster",
+    "abuse",
+    "bounce",
+    "mailer-daemon",
+    "newsletter",
+    "unsubscribe",
+    "subscribe",
     "sales",
     "marketing",
     "admin",
-    "it", "itsupport",
-    "faktura", "invoice", "regnskap",
-    "kundeservice", "customer",
-    "booking", "bestilling", "order",
-    "privacy", "gdpr", "personvern",
-    "media", "press", "presse",
+    "it",
+    "itsupport",
+    "faktura",
+    "invoice",
+    "regnskap",
+    "kundeservice",
+    "customer",
+    "booking",
+    "bestilling",
+    "order",
+    "privacy",
+    "gdpr",
+    "personvern",
+    "media",
+    "press",
+    "presse",
 }
 
 # Fast-path pages: plain-HTTP fetch first (cheap), Playwright only if needed.
-FAST_CONTACT_PATHS = ["", "/kontakt", "/om-oss", "/ansatte", "/team", "/contact", "/about"]
+FAST_CONTACT_PATHS = [
+    "",
+    "/kontakt",
+    "/om-oss",
+    "/ansatte",
+    "/team",
+    "/contact",
+    "/about",
+]
 
 # Minimal mailto extractor for the HTTP fast path
 MAILTO_PATTERN = re.compile(r'href=["\']mailto:([^"\'>?]+)', re.IGNORECASE)
-TAG_STRIP_PATTERN = re.compile(r"<script.*?</script>|<style.*?</style>|<[^>]+>", re.DOTALL | re.IGNORECASE)
+TAG_STRIP_PATTERN = re.compile(
+    r"<script.*?</script>|<style.*?</style>|<[^>]+>", re.DOTALL | re.IGNORECASE
+)
 
 # robots.txt cache: domain -> (fetched_at, disallows) ; fail-open on error
 _ROBOTS_CACHE: dict[str, tuple[float, list[str] | None]] = {}
@@ -90,8 +120,11 @@ def _fetch_robots_disallows(domain: str) -> list[str] | None:
     if cached and now - cached[0] < _ROBOTS_TTL_SEC:
         return cached[1]
     try:
-        resp = requests.get(f"https://{domain}/robots.txt", timeout=10,
-                            headers={"User-Agent": USER_AGENT})
+        resp = requests.get(
+            f"https://{domain}/robots.txt",
+            timeout=10,
+            headers={"User-Agent": USER_AGENT},
+        )
         if not resp.ok:
             _ROBOTS_CACHE[domain] = (now, None)
             return None
@@ -114,8 +147,11 @@ def _path_allowed(path: str, disallows: list[str] | None) -> bool:
     if not disallows:
         return True
     probe = path or "/"
-    return not any(probe == d or probe.startswith(d.rstrip("/") + "/") or d == "/" and True
-                   for d in disallows if d == "/" or probe.startswith(d))
+    return not any(
+        probe == d or probe.startswith(d.rstrip("/") + "/") or d == "/" and True
+        for d in disallows
+        if d == "/" or probe.startswith(d)
+    )
 
 
 def _is_site_blocked(disallows: list[str] | None) -> bool:
@@ -145,11 +181,19 @@ def _record_found(found: dict, email: str, domain: str, snippet: str) -> None:
         found[email] = {"score": score, "title": title, "name": name}
 
 
-def _scrape_fast(domain: str, base_url: str, paths: list[str], timeout_sec: int,
-                 found: dict, deadline: float | None = None) -> None:
+def _scrape_fast(
+    domain: str,
+    base_url: str,
+    paths: list[str],
+    timeout_sec: int,
+    found: dict,
+    deadline: float | None = None,
+) -> None:
     """Plain-HTTP fast path: fetch contact pages, extract emails, no browser."""
     session = requests.Session()
-    session.headers.update({"User-Agent": USER_AGENT, "Accept-Language": "nb-NO,nb;q=0.9"})
+    session.headers.update(
+        {"User-Agent": USER_AGENT, "Accept-Language": "nb-NO,nb;q=0.9"}
+    )
     for path in paths:
         if deadline is not None and _time.monotonic() > deadline:
             break
@@ -163,12 +207,12 @@ def _scrape_fast(domain: str, base_url: str, paths: list[str], timeout_sec: int,
             # Strategy A: mailto links (with surrounding text for title)
             for m in MAILTO_PATTERN.finditer(html):
                 start = max(0, m.start() - 2000)
-                snippet = TAG_STRIP_PATTERN.sub(" ", html[start:m.end() + 500])
+                snippet = TAG_STRIP_PATTERN.sub(" ", html[start : m.end() + 500])
                 _record_found(found, m.group(1).strip(), domain, snippet)
             # Strategy B: bare emails in visible text
             for m in EMAIL_PATTERN.finditer(text):
                 start = max(0, m.start() - 150)
-                _record_found(found, m.group(0), domain, text[start:m.end() + 150])
+                _record_found(found, m.group(0), domain, text[start : m.end() + 150])
             # Stop early on a personal hit, like the browser path does
             best = max((v["score"] for v in found.values()), default=0)
             if best >= 10 and len(found) >= 2:
@@ -181,12 +225,24 @@ def _scrape_fast(domain: str, base_url: str, paths: list[str], timeout_sec: int,
 
 # Prefixes that are USEFUL (role addresses worth contacting)
 GOOD_ROLE_PREFIXES = {
-    "dagligleder", "ceo", "director", "leder",
-    "rekruttering", "rekrutering", "recruitment", "recruiting",
-    "hr", "personal", "personalsjef",
-    "careers", "jobb", "jobs",
-    "kontakt", "contact",
-    "post", "info",
+    "dagligleder",
+    "ceo",
+    "director",
+    "leder",
+    "rekruttering",
+    "rekrutering",
+    "recruitment",
+    "recruiting",
+    "hr",
+    "personal",
+    "personalsjef",
+    "careers",
+    "jobb",
+    "jobs",
+    "kontakt",
+    "contact",
+    "post",
+    "info",
 }
 
 # Norwegian / English title keywords to look for near an email
@@ -210,12 +266,16 @@ def _is_valid_email(email: str, domain: str) -> bool:
     email_lower = email.lower()
     local, _, email_domain = email_lower.partition("@")
 
-    root = domain.lstrip("www.").lower()
+    root = domain.removeprefix("www.").lower()
     if not (email_domain == root or email_domain.endswith("." + root)):
         return False
 
     for prefix in SKIP_PREFIXES:
-        if local == prefix or local.startswith(prefix + ".") or local.startswith(prefix + "+"):
+        if (
+            local == prefix
+            or local.startswith(prefix + ".")
+            or local.startswith(prefix + "+")
+        ):
             return False
 
     return True
@@ -250,7 +310,7 @@ def _extract_title_from_text(text: str) -> str:
 
     # Clean up whitespace
     cleaned = re.sub(r"[ \t]+", " ", text.strip())
-    lines = [l.strip() for l in re.split(r"[\n\r|•/–-]", cleaned) if l.strip()]
+    lines = [line.strip() for line in re.split(r"[\n\r|•/–-]", cleaned) if line.strip()]
 
     for line in lines:
         # Skip lines that are just email addresses or very short
@@ -265,7 +325,11 @@ def _extract_title_from_text(text: str) -> str:
             return title[:80]
 
     # Fallback: return the shortest non-email line as a possible title
-    candidates = [l for l in lines if not EMAIL_PATTERN.search(l) and 3 <= len(l) <= 60]
+    candidates = [
+        line
+        for line in lines
+        if not EMAIL_PATTERN.search(line) and 3 <= len(line) <= 60
+    ]
     if candidates:
         # Prefer lines with title keywords, else take the shortest
         for c in candidates:
@@ -313,9 +377,15 @@ def _get_mailto_contacts(page) -> list[dict]:
         return []
 
 
-def _scrape_pages(page, domain: str, base_url: str, timeout_sec: int, found: dict,
-                  deadline: float | None = None,
-                  allowed_paths: list[str] | None = None) -> None:
+def _scrape_pages(
+    page,
+    domain: str,
+    base_url: str,
+    timeout_sec: int,
+    found: dict,
+    deadline: float | None = None,
+    allowed_paths: list[str] | None = None,
+) -> None:
     """Core scraping logic — visit contact pages and extract emails into `found` dict."""
     import time as _time
 
@@ -397,8 +467,9 @@ def _scrape_pages(page, domain: str, base_url: str, timeout_sec: int, found: dic
             continue
 
 
-def scrape_emails_from_website(domain: str, timeout_sec: int = 20, browser=None,
-                               deadline: float | None = None) -> list[dict]:
+def scrape_emails_from_website(
+    domain: str, timeout_sec: int = 20, browser=None, deadline: float | None = None
+) -> list[dict]:
     """
     Visit the company website and return a ranked list of contacts.
     Each contact is a dict: {"email": str, "title": str, "name": str}
@@ -434,8 +505,17 @@ def scrape_emails_from_website(domain: str, timeout_sec: int = 20, browser=None,
         try:
             with browser_context(browser) as context:
                 page = context.new_page()
-                _scrape_pages(page, domain, base_url, timeout_sec, found, deadline,
-                              allowed_paths=[p for p in CONTACT_PATHS if _path_allowed(p, disallows)])
+                _scrape_pages(
+                    page,
+                    domain,
+                    base_url,
+                    timeout_sec,
+                    found,
+                    deadline,
+                    allowed_paths=[
+                        p for p in CONTACT_PATHS if _path_allowed(p, disallows)
+                    ],
+                )
         except Exception as exc:
             logger.warning("scrape_emails_from_website failed for %s: %s", domain, exc)
             if not found:
@@ -446,11 +526,13 @@ def scrape_emails_from_website(domain: str, timeout_sec: int = 20, browser=None,
     result = []
     for email in ranked[:5]:
         entry = found[email]
-        result.append({
-            "email": email,
-            "title": entry["title"],
-            "name": entry["name"],
-        })
+        result.append(
+            {
+                "email": email,
+                "title": entry["title"],
+                "name": entry["name"],
+            }
+        )
 
     if result:
         logger.info(

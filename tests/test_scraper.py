@@ -3,8 +3,7 @@ Tests for the finn.no scraper.
 Uses mocked Playwright responses to avoid hitting the live site.
 """
 
-import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from src.scraper.finn_scraper import (
     _build_search_url,

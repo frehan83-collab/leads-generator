@@ -3,9 +3,7 @@ Tests for the AI email drafter module.
 All Anthropic API calls are mocked — no real API calls are made.
 """
 
-import sys
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from src.emails.ai_drafter import generate_ai_opener
 
@@ -49,7 +47,9 @@ class TestGenerateAiOpener:
         with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
             with patch.dict("sys.modules", {"anthropic": None}):
                 # Force ImportError by patching the import
-                with patch("builtins.__import__", side_effect=_import_raiser("anthropic")):
+                with patch(
+                    "builtins.__import__", side_effect=_import_raiser("anthropic")
+                ):
                     result = generate_ai_opener(
                         "Ole Hansen", "CEO", "Corp AS", "Daglig leder", "HR"
                     )
@@ -73,7 +73,9 @@ class TestGenerateAiOpener:
 
 def _import_raiser(blocked_module):
     """Create an import function that blocks a specific module."""
-    original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+    original_import = (
+        __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+    )
 
     def custom_import(name, *args, **kwargs):
         if name == blocked_module:

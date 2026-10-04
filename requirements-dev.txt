@@ -1,0 +1,4 @@
+# Development-only dependencies (lint, test tooling).
+# Install with: pip install -r requirements-dev.txt
+-r requirements.txt
+ruff==0.14.13

@@ -5,14 +5,18 @@ used in the lead generation pipeline.
 """
 
 import logging
-import time
 import os
 import threading
-from typing import Optional
+import time
 
 import requests
 
-from src.snov.errors import SnovError, SnovAuthError, SnovOutOfCredits, is_credit_error_text
+from src.snov.errors import (
+    SnovAuthError,
+    SnovError,
+    SnovOutOfCredits,
+    is_credit_error_text,
+)
 from src.utils.retry import retry
 
 logger = logging.getLogger(__name__)
@@ -25,12 +29,12 @@ RATE_LIMIT_DELAY = 1.1  # seconds between calls to stay under 60 req/min
 class SnovClient:
     def __init__(
         self,
-        client_id: Optional[str] = None,
-        client_secret: Optional[str] = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
     ):
         self.client_id = client_id or os.getenv("SNOV_CLIENT_ID", "")
         self.client_secret = client_secret or os.getenv("SNOV_CLIENT_SECRET", "")
-        self._access_token: Optional[str] = None
+        self._access_token: str | None = None
         self._token_expires_at: float = 0.0
         self._call_lock = threading.Lock()
 
@@ -88,7 +92,9 @@ class SnovClient:
         if not isinstance(result, dict):
             return result
         if result.get("success") is False:
-            message = str(result.get("message") or result.get("error") or "unknown API error")
+            message = str(
+                result.get("message") or result.get("error") or "unknown API error"
+            )
             if is_credit_error_text(message):
                 raise SnovOutOfCredits(f"Snov.io {op} failed: {message}")
             raise SnovError(f"Snov.io {op} failed: {message}")
@@ -100,7 +106,11 @@ class SnovClient:
             raise SnovError(f"Snov.io {op} failed: {message}")
         return result
 
-    @retry(max_attempts=3, base_delay=1.5, retryable_exceptions=(requests.exceptions.RequestException,))
+    @retry(
+        max_attempts=3,
+        base_delay=1.5,
+        retryable_exceptions=(requests.exceptions.RequestException,),
+    )
     def _get(self, path: str, params: dict = None) -> dict:
         with self._call_lock:
             time.sleep(RATE_LIMIT_DELAY)
@@ -114,7 +124,11 @@ class SnovClient:
             resp.raise_for_status()
             return self._check_payload(resp.json(), f"GET {path}")
 
-    @retry(max_attempts=3, base_delay=1.5, retryable_exceptions=(requests.exceptions.RequestException,))
+    @retry(
+        max_attempts=3,
+        base_delay=1.5,
+        retryable_exceptions=(requests.exceptions.RequestException,),
+    )
     def _post(self, path: str, data: dict = None) -> dict:
         with self._call_lock:
             time.sleep(RATE_LIMIT_DELAY)
@@ -132,7 +146,9 @@ class SnovClient:
     # Async start/poll helpers
     # ------------------------------------------------------------------
 
-    def _poll(self, result_path: str, task_hash: str, max_wait: int = 30) -> Optional[dict]:
+    def _poll(
+        self, result_path: str, task_hash: str, max_wait: int = 30
+    ) -> dict | None:
         """Poll an async endpoint until result is ready or timeout."""
         deadline = time.time() + max_wait
         while time.time() < deadline:
@@ -162,7 +178,7 @@ class SnovClient:
     # Domain / Company lookup
     # ------------------------------------------------------------------
 
-    def find_domain_by_company_name(self, company_name: str) -> Optional[str]:
+    def find_domain_by_company_name(self, company_name: str) -> str | None:
         """
         Given a company name, return its domain (e.g. 'Acme AS' → 'acme.no').
         Uses async start/poll pattern.
@@ -172,7 +188,9 @@ class SnovClient:
                 "/v2/company-domain-by-name/start",
                 {"names": [company_name]},
             )
-            task_hash = start.get("task_hash") or (start.get("data") or {}).get("task_hash")
+            task_hash = start.get("task_hash") or (start.get("data") or {}).get(
+                "task_hash"
+            )
             if not task_hash:
                 logger.warning("No task_hash for company '%s'", company_name)
                 return None
@@ -205,13 +223,15 @@ class SnovClient:
             logger.warning("get_domain_email_count error: %s", exc)
             return 0
 
-    def search_domain(self, domain: str) -> Optional[dict]:
+    def search_domain(self, domain: str) -> dict | None:
         """
         Get company info (name, industry, size, phone) for a domain.
         """
         try:
             start = self._post("/v2/domain-search/start", {"domain": domain})
-            task_hash = (start.get("data") or {}).get("task_hash") or start.get("task_hash")
+            task_hash = (start.get("data") or {}).get("task_hash") or start.get(
+                "task_hash"
+            )
             if not task_hash:
                 return None
             return self._poll(f"/v2/domain-search/result/{task_hash}", task_hash)
@@ -224,7 +244,7 @@ class SnovClient:
     def get_prospects_by_domain(
         self,
         domain: str,
-        positions: Optional[list[str]] = None,
+        positions: list[str] | None = None,
         page: int = 1,
     ) -> list[dict]:
         """
@@ -237,7 +257,9 @@ class SnovClient:
                 payload["positions[]"] = positions[:10]
 
             start = self._post("/v2/domain-search/prospects/start", payload)
-            task_hash = (start.get("data") or {}).get("task_hash") or start.get("task_hash")
+            task_hash = (start.get("data") or {}).get("task_hash") or start.get(
+                "task_hash"
+            )
             if not task_hash:
                 return []
 
@@ -258,7 +280,7 @@ class SnovClient:
 
     def find_email_by_name_domain(
         self, first_name: str, last_name: str, domain: str
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """
         Find a verified email given first name, last name and domain.
         Returns dict with email + smtp_status, or None.
@@ -276,7 +298,9 @@ class SnovClient:
                     ]
                 },
             )
-            task_hash = (start.get("data") or {}).get("task_hash") or start.get("task_hash")
+            task_hash = (start.get("data") or {}).get("task_hash") or start.get(
+                "task_hash"
+            )
             if not task_hash:
                 return None
 
@@ -290,9 +314,7 @@ class SnovClient:
                 email = item.get("email")
                 status = item.get("smtp_status")
                 if email:
-                    logger.info(
-                        "Email found: %s (status: %s)", email, status
-                    )
+                    logger.info("Email found: %s (status: %s)", email, status)
                     return {"email": email, "smtp_status": status}
         except SnovError:
             raise
@@ -304,17 +326,17 @@ class SnovClient:
     # Email verification
     # ------------------------------------------------------------------
 
-    def verify_email(self, email: str) -> Optional[str]:
+    def verify_email(self, email: str) -> str | None:
         """
         Verify an email address. Returns 'valid', 'not_valid', or 'unknown'.
         Uses Snov.io v2 async endpoint.
         Response shape: {"data": [{"email": "...", "result": {"smtp_status": "..."}}]}
         """
         try:
-            start = self._post(
-                "/v2/email-verification/start", {"emails": [email]}
+            start = self._post("/v2/email-verification/start", {"emails": [email]})
+            task_hash = (start.get("data") or {}).get("task_hash") or start.get(
+                "task_hash"
             )
-            task_hash = (start.get("data") or {}).get("task_hash") or start.get("task_hash")
             if not task_hash:
                 return None
 
@@ -327,9 +349,8 @@ class SnovClient:
             if isinstance(items, list) and items:
                 item = items[0]
                 # v2 nests the status under "result" sub-object
-                smtp_status = (
-                    (item.get("result") or {}).get("smtp_status")
-                    or item.get("smtp_status")
+                smtp_status = (item.get("result") or {}).get("smtp_status") or item.get(
+                    "smtp_status"
                 )
                 logger.info("Email %s verification: %s", email, smtp_status)
                 return smtp_status
@@ -343,12 +364,10 @@ class SnovClient:
     # Profile enrichment
     # ------------------------------------------------------------------
 
-    def get_profile_by_email(self, email: str) -> Optional[dict]:
+    def get_profile_by_email(self, email: str) -> dict | None:
         """Enrich a prospect profile from their email address."""
         try:
-            result = self._post(
-                "/v1/get-profile-by-email", {"email": email}
-            )
+            result = self._post("/v1/get-profile-by-email", {"email": email})
             return result.get("data") or result
         except SnovError:
             raise
@@ -356,13 +375,15 @@ class SnovClient:
             logger.error("get_profile_by_email error: %s", exc)
         return None
 
-    def get_linkedin_profile(self, linkedin_url: str) -> Optional[dict]:
+    def get_linkedin_profile(self, linkedin_url: str) -> dict | None:
         """Enrich a profile from a LinkedIn URL."""
         try:
             start = self._post(
                 "/v2/li-profiles-by-urls/start", {"urls[]": [linkedin_url]}
             )
-            task_hash = (start.get("data") or {}).get("task_hash") or start.get("task_hash")
+            task_hash = (start.get("data") or {}).get("task_hash") or start.get(
+                "task_hash"
+            )
             if not task_hash:
                 return None
             result = self._poll("/v2/li-profiles-by-urls/result", task_hash)
@@ -392,7 +413,7 @@ class SnovClient:
             logger.error("get_user_lists error: %s", exc)
         return []
 
-    def create_list(self, name: str) -> Optional[str]:
+    def create_list(self, name: str) -> str | None:
         """Create a new prospect list and return its ID."""
         try:
             result = self._post("/v1/lists", {"name": name})
@@ -445,7 +466,7 @@ class SnovClient:
             logger.error("add_prospect_to_list error: %s", exc)
         return False
 
-    def get_campaign_analytics(self, campaign_id: str) -> Optional[dict]:
+    def get_campaign_analytics(self, campaign_id: str) -> dict | None:
         """Return full analytics for a campaign."""
         try:
             return self._get(

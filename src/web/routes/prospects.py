@@ -1,12 +1,12 @@
 """Prospects page — filterable table with CSV, Excel and PDF export."""
 
-from flask import Blueprint, render_template, request, Response
+from flask import Blueprint, Response, render_template, request
 
 from src.database import db
 from src.export.csv_exporter import (
-    stream_prospects_csv,
-    build_prospects_xlsx,
     build_prospects_pdf,
+    build_prospects_xlsx,
+    stream_prospects_csv,
 )
 
 prospects_bp = Blueprint("prospects", __name__)

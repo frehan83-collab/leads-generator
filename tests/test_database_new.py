@@ -4,9 +4,10 @@ Uses a temporary database for each test.
 """
 
 import json
-import pytest
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
-from datetime import datetime, timezone, timedelta
+
+import pytest
 
 import src.database.db as db_module
 
@@ -29,28 +30,52 @@ class TestGetExistingExternalIds:
 
     def test_returns_ids_for_source(self):
         # Insert two finn postings
-        db_module.insert_job_posting({
-            "finn_id": "100", "external_id": "100", "source": "finn",
-            "title": "Job A", "company_name": "Corp A", "company_domain": None,
-            "location": "Oslo", "url": "https://finn.no/100",
-            "keyword_matched": "HR", "published_at": None,
-            "scraped_at": "2024-01-01T00:00:00",
-        })
-        db_module.insert_job_posting({
-            "finn_id": "200", "external_id": "200", "source": "finn",
-            "title": "Job B", "company_name": "Corp B", "company_domain": None,
-            "location": "Bergen", "url": "https://finn.no/200",
-            "keyword_matched": "HR", "published_at": None,
-            "scraped_at": "2024-01-01T00:00:00",
-        })
+        db_module.insert_job_posting(
+            {
+                "finn_id": "100",
+                "external_id": "100",
+                "source": "finn",
+                "title": "Job A",
+                "company_name": "Corp A",
+                "company_domain": None,
+                "location": "Oslo",
+                "url": "https://finn.no/100",
+                "keyword_matched": "HR",
+                "published_at": None,
+                "scraped_at": "2024-01-01T00:00:00",
+            }
+        )
+        db_module.insert_job_posting(
+            {
+                "finn_id": "200",
+                "external_id": "200",
+                "source": "finn",
+                "title": "Job B",
+                "company_name": "Corp B",
+                "company_domain": None,
+                "location": "Bergen",
+                "url": "https://finn.no/200",
+                "keyword_matched": "HR",
+                "published_at": None,
+                "scraped_at": "2024-01-01T00:00:00",
+            }
+        )
         # Insert a nav posting
-        db_module.insert_job_posting({
-            "finn_id": "300", "external_id": "300", "source": "nav",
-            "title": "Job C", "company_name": "Corp C", "company_domain": None,
-            "location": "Tromsø", "url": "https://nav.no/300",
-            "keyword_matched": "HR", "published_at": None,
-            "scraped_at": "2024-01-01T00:00:00",
-        })
+        db_module.insert_job_posting(
+            {
+                "finn_id": "300",
+                "external_id": "300",
+                "source": "nav",
+                "title": "Job C",
+                "company_name": "Corp C",
+                "company_domain": None,
+                "location": "Tromsø",
+                "url": "https://nav.no/300",
+                "keyword_matched": "HR",
+                "published_at": None,
+                "scraped_at": "2024-01-01T00:00:00",
+            }
+        )
 
         finn_ids = db_module.get_existing_external_ids("finn")
         assert finn_ids == {"100", "200"}
@@ -93,7 +118,9 @@ class TestWebsiteCache:
         """Contacts cached more than ttl_days ago should return None."""
         contacts = [{"email": "old@corp.no", "name": "Old"}]
         # Insert with an old timestamp
-        old_time = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=10)).isoformat()
+        old_time = (
+            datetime.now(UTC).replace(tzinfo=None) - timedelta(days=10)
+        ).isoformat()
         with db_module.get_connection() as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO website_cache (domain, contacts_json, cached_at) VALUES (?, ?, ?)",
@@ -131,7 +158,7 @@ class TestGetPipelineRunTrends:
 
     def test_returns_aggregated_trends(self):
         # Insert some pipeline runs
-        today = datetime.now(timezone.utc).replace(tzinfo=None)
+        today = datetime.now(UTC).replace(tzinfo=None)
         yesterday = today - timedelta(days=1)
 
         with db_module.get_connection() as conn:
@@ -161,14 +188,16 @@ class TestGetPipelineRunTrends:
         assert len(trends) == 2  # Two distinct days
 
         # Yesterday should be aggregated
-        yesterday_trend = [t for t in trends if t["day"] == yesterday.strftime("%Y-%m-%d")]
+        yesterday_trend = [
+            t for t in trends if t["day"] == yesterday.strftime("%Y-%m-%d")
+        ]
         assert len(yesterday_trend) == 1
         assert yesterday_trend[0]["total_scraped"] == 50  # 30 + 20
         assert yesterday_trend[0]["total_prospects"] == 8  # 5 + 3
         assert yesterday_trend[0]["run_count"] == 2
 
     def test_excludes_failed_runs(self):
-        today = datetime.now(timezone.utc).replace(tzinfo=None)
+        today = datetime.now(UTC).replace(tzinfo=None)
         with db_module.get_connection() as conn:
             conn.execute(
                 """INSERT INTO pipeline_runs
@@ -187,7 +216,8 @@ class TestWebsiteCacheTable:
     def test_table_exists(self):
         with db_module.get_connection() as conn:
             tables = {
-                row[0] for row in conn.execute(
+                row[0]
+                for row in conn.execute(
                     "SELECT name FROM sqlite_master WHERE type='table'"
                 ).fetchall()
             }

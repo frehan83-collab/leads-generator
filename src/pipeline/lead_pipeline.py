@@ -9,22 +9,22 @@ import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from dotenv import load_dotenv
 
-from src.scraper.finn_scraper import scrape_all_keywords as scrape_finn, scrape_company_domain
-from src.scraper.nav_scraper import scrape_all_keywords as scrape_nav
-from src.scraper.website_scraper import scrape_emails_from_website
-from src.scraper.browser_manager import BrowserManager
-from src.snov.client import SnovClient
-from src.snov.errors import SnovAuthError, SnovOutOfCredits
 from src.brreg.client import BRREGClient
 from src.database import db
 from src.emails.drafter import auto_draft_for_new_prospect
 from src.export.csv_exporter import auto_export_after_run
 from src.notifications.webhook import send_pipeline_alert
+from src.scraper.browser_manager import BrowserManager
+from src.scraper.finn_scraper import scrape_all_keywords as scrape_finn
+from src.scraper.finn_scraper import scrape_company_domain
+from src.scraper.nav_scraper import scrape_all_keywords as scrape_nav
+from src.scraper.website_scraper import scrape_emails_from_website
+from src.snov.client import SnovClient
+from src.snov.errors import SnovAuthError, SnovOutOfCredits
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ class _DomainTimeout(Exception):
 
 
 class LeadPipeline:
-    def __init__(self, snov_list_id: Optional[str] = None, sources: list[str] = None):
+    def __init__(self, snov_list_id: str | None = None, sources: list[str] = None):
         """
         Initialize lead generation pipeline.
 
@@ -60,7 +60,7 @@ class LeadPipeline:
         self.snov = SnovClient()
         self.brreg = BRREGClient()
         self.snov_list_id = snov_list_id or os.getenv("SNOV_LIST_ID")
-        self.sources = sources or ['finn', 'nav']  # Multi-source by default
+        self.sources = sources or ["finn", "nav"]  # Multi-source by default
         self._stats = {
             "postings_scraped": 0,
             "postings_new": 0,
@@ -75,7 +75,7 @@ class LeadPipeline:
             "errors": 0,
         }
         self._stats_lock = threading.Lock()
-        self._run_id: Optional[int] = None
+        self._run_id: int | None = None
 
     def run(self, keywords: list[str]) -> dict:
         """
@@ -85,7 +85,9 @@ class LeadPipeline:
         from src.config import settings as _settings
         from src.snov.errors import SnovAuthError, SnovOutOfCredits
 
-        logger.info("=== Lead pipeline starting -- %s ===", datetime.now(timezone.utc).isoformat())
+        logger.info(
+            "=== Lead pipeline starting -- %s ===", datetime.now(UTC).isoformat()
+        )
         db.init_db()
 
         # Track this pipeline run
@@ -103,7 +105,11 @@ class LeadPipeline:
             with BrowserManager() as bm:
                 postings = self._scrape_all_sources(keywords, browser=bm.browser)
                 self._stats["postings_scraped"] = len(postings)
-                logger.info("Scraped %d total postings from %d sources", len(postings), len(self.sources))
+                logger.info(
+                    "Scraped %d total postings from %d sources",
+                    len(postings),
+                    len(self.sources),
+                )
                 for source, count in self._stats["postings_by_source"].items():
                     logger.info("  - %s: %d postings", source, count)
 
@@ -114,7 +120,9 @@ class LeadPipeline:
                     for posting in postings:
                         self._process_posting_guarded(posting, bm.browser)
             else:
-                logger.info("Processing %d postings with %d workers", len(postings), workers)
+                logger.info(
+                    "Processing %d postings with %d workers", len(postings), workers
+                )
                 self._process_postings_parallel(postings, workers)
 
             # Step 3: Calculate intent scores for companies with new postings
@@ -156,14 +164,18 @@ class LeadPipeline:
         except (SnovAuthError, SnovOutOfCredits):
             raise  # fatal: abort the whole run, don't swallow per posting
         except _DomainTimeout as exc:
-            logger.warning("Skipped posting %s: domain %s timed out",
-                           posting.get("external_id", "?"), exc)
+            logger.warning(
+                "Skipped posting %s: domain %s timed out",
+                posting.get("external_id", "?"),
+                exc,
+            )
             with self._stats_lock:
                 self._stats["errors"] += 1
         except Exception as exc:
             logger.error(
                 "Error processing posting %s: %s",
-                posting.get("external_id", "?"), exc,
+                posting.get("external_id", "?"),
+                exc,
             )
             with self._stats_lock:
                 self._stats["errors"] += 1
@@ -209,6 +221,7 @@ class LeadPipeline:
 
     def _check_snov_balance(self, min_credits: int) -> None:
         """Abort early when the Snov.io balance can't fund a run."""
+        from src.config import settings as _settings
         from src.snov.errors import SnovError, SnovOutOfCredits
 
         try:
@@ -227,6 +240,21 @@ class LeadPipeline:
             raise SnovOutOfCredits(
                 f"Snov.io balance ({balance}) below SNOV_MIN_CREDITS ({min_credits})."
             )
+        low_water = _settings.snov_low_water_credits
+        if low_water and balance < low_water:
+            logger.warning(
+                "Snov.io balance low: %s credits (warning level %s) — top up soon",
+                balance,
+                low_water,
+            )
+            try:
+                send_pipeline_alert(
+                    {"snov_balance": balance},
+                    status="warning",
+                    error_message=f"Snov.io balance low: {balance} credits remaining",
+                )
+            except Exception as exc:
+                logger.debug("Low-water webhook failed: %s", exc)
 
     def _snov_balance_probe(self):
         """Best-effort credit read; returns int, None if unreadable."""
@@ -254,7 +282,7 @@ class LeadPipeline:
         if not self._run_id:
             return
         data = {
-            "finished_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+            "finished_at": datetime.now(UTC).replace(tzinfo=None).isoformat(),
             "status": status,
             "postings_scraped": self._stats["postings_scraped"],
             "postings_new": self._stats["postings_new"],
@@ -285,7 +313,7 @@ class LeadPipeline:
     # Internal steps
     # ------------------------------------------------------------------
 
-    def _ensure_snov_list(self) -> Optional[str]:
+    def _ensure_snov_list(self) -> str | None:
         """Get or create a Snov.io prospect list for this tool."""
         list_name = "Multi-Source Leads"  # Updated name for multi-source
         lists = self.snov.get_user_lists()
@@ -318,32 +346,46 @@ class LeadPipeline:
             logger.info("Source %s: %d existing IDs in DB", source, len(known_ids))
 
             try:
-                if source == 'finn':
-                    for posting in scrape_finn(keywords, known_ids=known_ids, browser=browser):
+                if source == "finn":
+                    for posting in scrape_finn(
+                        keywords, known_ids=known_ids, browser=browser
+                    ):
                         # Check for duplicates by URL
                         if posting["url"] not in seen_ids:
                             seen_ids.add(posting["url"])
                             all_postings.append(posting)
                             source_count += 1
 
-                elif source == 'nav':
-                    for posting in scrape_nav(keywords, known_ids=known_ids, browser=browser):
+                elif source == "nav":
+                    for posting in scrape_nav(
+                        keywords, known_ids=known_ids, browser=browser
+                    ):
                         if posting["url"] not in seen_ids:
                             seen_ids.add(posting["url"])
                             all_postings.append(posting)
                             source_count += 1
 
-                elif source == 'karrierestart':
-                    from src.scraper.karrierestart_scraper import scrape_all_keywords as scrape_karrierestart
-                    for posting in scrape_karrierestart(keywords, known_ids=known_ids, browser=browser):
+                elif source == "karrierestart":
+                    from src.scraper.karrierestart_scraper import (
+                        scrape_all_keywords as scrape_karrierestart,
+                    )
+
+                    for posting in scrape_karrierestart(
+                        keywords, known_ids=known_ids, browser=browser
+                    ):
                         if posting["url"] not in seen_ids:
                             seen_ids.add(posting["url"])
                             all_postings.append(posting)
                             source_count += 1
 
-                elif source == 'jobbnorge':
-                    from src.scraper.jobbnorge_scraper import scrape_all_keywords as scrape_jobbnorge
-                    for posting in scrape_jobbnorge(keywords, known_ids=known_ids, browser=browser):
+                elif source == "jobbnorge":
+                    from src.scraper.jobbnorge_scraper import (
+                        scrape_all_keywords as scrape_jobbnorge,
+                    )
+
+                    for posting in scrape_jobbnorge(
+                        keywords, known_ids=known_ids, browser=browser
+                    ):
                         if posting["url"] not in seen_ids:
                             seen_ids.add(posting["url"])
                             all_postings.append(posting)
@@ -362,7 +404,7 @@ class LeadPipeline:
 
         return all_postings
 
-    def _enrich_with_brreg(self, company_name: str, posting_id: int) -> Optional[str]:
+    def _enrich_with_brreg(self, company_name: str, posting_id: int) -> str | None:
         """
         Try to match company to BRREG database and get org_number.
         First checks local companies table, then tries BRREG API.
@@ -383,7 +425,11 @@ class LeadPipeline:
             ).fetchone()
             if row:
                 org_number = row[0]
-                logger.debug("Matched '%s' to BRREG org=%s (from local DB)", company_name, org_number)
+                logger.debug(
+                    "Matched '%s' to BRREG org=%s (from local DB)",
+                    company_name,
+                    org_number,
+                )
                 with self._stats_lock:
                     self._stats["brreg_matches"] += 1
                 return org_number
@@ -398,7 +444,9 @@ class LeadPipeline:
                 ).fetchall()
 
             if all_companies:
-                company_names = {row["name"]: row["org_number"] for row in all_companies}
+                company_names = {
+                    row["name"]: row["org_number"] for row in all_companies
+                }
                 match = process.extractOne(
                     company_name,
                     company_names.keys(),
@@ -410,7 +458,10 @@ class LeadPipeline:
                     org_number = company_names[matched_name]
                     logger.info(
                         "Fuzzy matched '%s' -> '%s' (score=%d, org=%s)",
-                        company_name, matched_name, score, org_number,
+                        company_name,
+                        matched_name,
+                        score,
+                        org_number,
                     )
                     with self._stats_lock:
                         self._stats["brreg_matches"] += 1
@@ -431,6 +482,7 @@ class LeadPipeline:
                     # Pick best fuzzy match from API results
                     try:
                         from rapidfuzz import fuzz
+
                         best_score = 0
                         best_org = None
                         for c in companies[:5]:  # Check top 5
@@ -445,7 +497,9 @@ class LeadPipeline:
                     except ImportError:
                         org_number = companies[0].get("organisasjonsnummer")
                 if org_number:
-                    logger.debug("BRREG API matched '%s' to org=%s", company_name, org_number)
+                    logger.debug(
+                        "BRREG API matched '%s' to org=%s", company_name, org_number
+                    )
                     with self._stats_lock:
                         self._stats["brreg_matches"] += 1
                     return org_number
@@ -474,7 +528,9 @@ class LeadPipeline:
         external_id = posting.get("external_id", posting.get("finn_id", ""))
 
         if not company_name:
-            logger.debug("Skipping posting %s from %s -- no company name", external_id, source)
+            logger.debug(
+                "Skipping posting %s from %s -- no company name", external_id, source
+            )
             return
 
         # 1. Store job posting (skip if already in DB). The UNIQUE
@@ -487,7 +543,9 @@ class LeadPipeline:
         with self._stats_lock:
             self._stats["postings_new"] += 1
 
-        logger.info("Processing [%s]: %s -- %s", source, company_name, posting.get("title"))
+        logger.info(
+            "Processing [%s]: %s -- %s", source, company_name, posting.get("title")
+        )
 
         # 2. BRREG Enrichment: Try to match company and get org_number
         org_number = posting.get("org_number")
@@ -506,10 +564,13 @@ class LeadPipeline:
         self._check_deadline(deadline, domain)
 
         # Update posting with domain and org_number
-        db.update_job_posting(posting_id, {
-            "company_domain": domain,
-            "org_number": org_number,
-        })
+        db.update_job_posting(
+            posting_id,
+            {
+                "company_domain": domain,
+                "org_number": org_number,
+            },
+        )
         with self._stats_lock:
             self._stats["domains_resolved"] += 1
 
@@ -519,7 +580,9 @@ class LeadPipeline:
         website_contacts = db.get_cached_contacts(domain)
         if website_contacts is None:
             website_contacts = scrape_emails_from_website(
-                domain, browser=browser, deadline=deadline,
+                domain,
+                browser=browser,
+                deadline=deadline,
             )
             db.cache_contacts(domain, website_contacts or [])
         stored_any = False
@@ -566,6 +629,7 @@ class LeadPipeline:
         so Snov.io can match them.
         """
         import re as _re
+
         name = raw.strip()
 
         # If comma-separated, take the LAST segment (usually the actual company)
@@ -581,7 +645,9 @@ class LeadPipeline:
         name = _re.sub(r"\s+", " ", name).strip()
         return name
 
-    def _resolve_domain(self, company_name: str, posting: dict, browser=None) -> Optional[str]:
+    def _resolve_domain(
+        self, company_name: str, posting: dict, browser=None
+    ) -> str | None:
         """Try multiple strategies to resolve the company domain."""
         # Strategy 1: Already in posting data
         if posting.get("company_domain"):
@@ -610,7 +676,7 @@ class LeadPipeline:
         posting: dict,
         title: str = "",
         scraped_name: str = "",
-    ) -> Optional[int]:
+    ) -> int | None:
         """
         Handle an email found directly from the company website.
         title and scraped_name come from the website scraper's context parsing.
@@ -664,7 +730,7 @@ class LeadPipeline:
             ),
             "email": email,
             "email_status": smtp_status,
-            "position": title,          # job title scraped from website
+            "position": title,  # job title scraped from website
             "company_name": posting.get("company_name", ""),
             "company_domain": domain,
             "linkedin_url": None,
@@ -690,12 +756,14 @@ class LeadPipeline:
             if added:
                 with self._stats_lock:
                     self._stats["prospects_added_to_snov"] += 1
-                db.log_outreach({
-                    "prospect_id": prospect_id,
-                    "campaign_id": self.snov_list_id,
-                    "status": "added_to_snov",
-                    "notes": f"Website scraped from {domain}, {posting.get('source', 'finn')} posting {posting.get('external_id', posting.get('finn_id', ''))}",
-                })
+                db.log_outreach(
+                    {
+                        "prospect_id": prospect_id,
+                        "campaign_id": self.snov_list_id,
+                        "status": "added_to_snov",
+                        "notes": f"Website scraped from {domain}, {posting.get('source', 'finn')} posting {posting.get('external_id', posting.get('finn_id', ''))}",
+                    }
+                )
                 logger.info("Added %s to Snov list %s", email, self.snov_list_id)
 
         return prospect_id
@@ -708,7 +776,9 @@ class LeadPipeline:
         posting: dict,
     ) -> None:
         """Enrich, verify, store and enroll a single prospect."""
-        first_name = prospect_data.get("first_name") or prospect_data.get("firstName", "")
+        first_name = prospect_data.get("first_name") or prospect_data.get(
+            "firstName", ""
+        )
         last_name = prospect_data.get("last_name") or prospect_data.get("lastName", "")
         position = prospect_data.get("position", "")
 
@@ -716,7 +786,9 @@ class LeadPipeline:
             return
 
         # 5. Find email
-        email_result = self.snov.find_email_by_name_domain(first_name, last_name, domain)
+        email_result = self.snov.find_email_by_name_domain(
+            first_name, last_name, domain
+        )
         if not email_result or not email_result.get("email"):
             logger.debug("No email found for %s %s @ %s", first_name, last_name, domain)
             return
@@ -757,7 +829,8 @@ class LeadPipeline:
             "position": position,
             "company_name": posting.get("company_name", ""),
             "company_domain": domain,
-            "linkedin_url": prospect_data.get("linkedinUrl") or prospect_data.get("linkedin_url"),
+            "linkedin_url": prospect_data.get("linkedinUrl")
+            or prospect_data.get("linkedin_url"),
             "snov_prospect_id": None,
             "snov_list_id": self.snov_list_id,
         }
@@ -780,12 +853,14 @@ class LeadPipeline:
             if added:
                 with self._stats_lock:
                     self._stats["prospects_added_to_snov"] += 1
-                db.log_outreach({
-                    "prospect_id": prospect_id,
-                    "campaign_id": self.snov_list_id,
-                    "status": "added_to_snov",
-                    "notes": f"Auto-added from {posting.get('source', 'finn')} posting {posting.get('external_id', posting.get('finn_id', ''))}",
-                })
+                db.log_outreach(
+                    {
+                        "prospect_id": prospect_id,
+                        "campaign_id": self.snov_list_id,
+                        "status": "added_to_snov",
+                        "notes": f"Auto-added from {posting.get('source', 'finn')} posting {posting.get('external_id', posting.get('finn_id', ''))}",
+                    }
+                )
 
     def _calculate_intent_scores(self) -> None:
         """Calculate hiring intent scores for all companies with job postings."""
@@ -806,9 +881,7 @@ class LeadPipeline:
                 signals = db.get_company_intent_signals(domain)
                 score = signals.get("score", 0)
                 if score > 0:
-                    db.update_company_intent_score(
-                        domain, score, json.dumps(signals)
-                    )
+                    db.update_company_intent_score(domain, score, json.dumps(signals))
                     scored += 1
 
             if scored:

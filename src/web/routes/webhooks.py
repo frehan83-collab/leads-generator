@@ -3,7 +3,7 @@
 import json
 import logging
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, jsonify, request
 
 from src.database import db
 
@@ -61,12 +61,14 @@ def resend_webhook():
         draft_id = db.get_draft_id_by_resend_id(resend_id)
 
         # Store the event
-        db.insert_email_event({
-            "draft_id": draft_id,
-            "resend_id": resend_id,
-            "event_type": event_type,
-            "payload": json.dumps(payload),
-        })
+        db.insert_email_event(
+            {
+                "draft_id": draft_id,
+                "resend_id": resend_id,
+                "event_type": event_type,
+                "payload": json.dumps(payload),
+            }
+        )
 
         # Update draft counters/timestamps if we found the draft
         draft = None
@@ -77,6 +79,7 @@ def resend_webhook():
                 update_data = {"open_count": current_opens + 1}
                 if not (draft or {}).get("opened_at"):
                     from src.database.db import _now
+
                     update_data["opened_at"] = _now()
                 db.update_email_draft(draft_id, update_data)
 
@@ -86,14 +89,20 @@ def resend_webhook():
                 db.update_email_draft(draft_id, {"click_count": current_clicks + 1})
 
             elif event_type == "bounced":
-                db.update_email_draft(draft_id, {
-                    "notes": f"BOUNCED: {data.get('bounce_type', 'unknown')}",
-                })
+                db.update_email_draft(
+                    draft_id,
+                    {
+                        "notes": f"BOUNCED: {data.get('bounce_type', 'unknown')}",
+                    },
+                )
 
             elif event_type == "complained":
-                db.update_email_draft(draft_id, {
-                    "notes": "COMPLAINT: recipient reported spam",
-                })
+                db.update_email_draft(
+                    draft_id,
+                    {
+                        "notes": "COMPLAINT: recipient reported spam",
+                    },
+                )
 
             if event_type in ("bounced", "complained"):
                 # Permanent suppression: never contact this address again.
@@ -122,7 +131,9 @@ def resend_webhook():
 
         logger.info(
             "Webhook processed: %s for resend_id=%s (draft_id=%s)",
-            event_type, resend_id, draft_id,
+            event_type,
+            resend_id,
+            draft_id,
         )
         return jsonify({"status": "ok"}), 200
 

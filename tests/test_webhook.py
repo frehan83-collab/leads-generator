@@ -3,8 +3,7 @@ Tests for the webhook notification module.
 HTTP calls are mocked — no real webhooks are sent.
 """
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from src.notifications.webhook import send_pipeline_alert
 
@@ -32,7 +31,9 @@ class TestSendPipelineAlert:
             "errors": 0,
         }
 
-        with patch.dict("os.environ", {"WEBHOOK_URL": "https://hooks.example.com/test"}):
+        with patch.dict(
+            "os.environ", {"WEBHOOK_URL": "https://hooks.example.com/test"}
+        ):
             result = send_pipeline_alert(stats, "completed")
 
         assert result is True
@@ -55,8 +56,12 @@ class TestSendPipelineAlert:
 
         stats = {"postings_scraped": 0, "errors": 1}
 
-        with patch.dict("os.environ", {"WEBHOOK_URL": "https://hooks.example.com/test"}):
-            result = send_pipeline_alert(stats, "failed", error_message="Connection timeout")
+        with patch.dict(
+            "os.environ", {"WEBHOOK_URL": "https://hooks.example.com/test"}
+        ):
+            result = send_pipeline_alert(
+                stats, "failed", error_message="Connection timeout"
+            )
 
         assert result is True
         payload = mock_post.call_args[1]["json"]
@@ -71,7 +76,9 @@ class TestSendPipelineAlert:
 
         stats = {"postings_scraped": 50, "postings_new": 0}
 
-        with patch.dict("os.environ", {"WEBHOOK_URL": "https://hooks.example.com/test"}):
+        with patch.dict(
+            "os.environ", {"WEBHOOK_URL": "https://hooks.example.com/test"}
+        ):
             result = send_pipeline_alert(stats, "completed")
 
         assert result is True
@@ -84,7 +91,9 @@ class TestSendPipelineAlert:
 
         stats = {"postings_scraped": 10}
 
-        with patch.dict("os.environ", {"WEBHOOK_URL": "https://hooks.example.com/test"}):
+        with patch.dict(
+            "os.environ", {"WEBHOOK_URL": "https://hooks.example.com/test"}
+        ):
             result = send_pipeline_alert(stats, "completed")
 
         assert result is False
@@ -98,11 +107,15 @@ class TestSendPipelineAlert:
         long_error = "x" * 500
         stats = {"errors": 1}
 
-        with patch.dict("os.environ", {"WEBHOOK_URL": "https://hooks.example.com/test"}):
+        with patch.dict(
+            "os.environ", {"WEBHOOK_URL": "https://hooks.example.com/test"}
+        ):
             send_pipeline_alert(stats, "failed", error_message=long_error)
 
         payload = mock_post.call_args[1]["json"]
         # Error message should be truncated to 200 chars
         assert len(long_error) > 200
-        error_line = [l for l in payload["text"].split("\n") if "Error:" in l][0]
+        error_line = [line for line in payload["text"].split("\n") if "Error:" in line][
+            0
+        ]
         assert len(error_line) < 250

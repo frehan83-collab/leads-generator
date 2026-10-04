@@ -13,7 +13,8 @@ API Documentation: https://data.brreg.no/enhetsregisteret/api/dokumentasjon/en/i
 
 import logging
 import time
-from typing import Optional, Generator
+from collections.abc import Generator
+
 import requests
 
 from src.utils.retry import retry
@@ -41,10 +42,12 @@ class BRREGClient:
 
     def _new_session(self) -> None:
         session = requests.Session()
-        session.headers.update({
-            "Accept": "application/json",
-            "User-Agent": "LeadsGenerator/1.0 (Lead generation tool)",
-        })
+        session.headers.update(
+            {
+                "Accept": "application/json",
+                "User-Agent": "LeadsGenerator/1.0 (Lead generation tool)",
+            }
+        )
         self.session = session
 
     def close(self) -> None:
@@ -62,7 +65,11 @@ class BRREGClient:
     def __exit__(self, *args) -> None:
         self.close()
 
-    @retry(max_attempts=3, base_delay=1.0, retryable_exceptions=(requests.exceptions.RequestException,))
+    @retry(
+        max_attempts=3,
+        base_delay=1.0,
+        retryable_exceptions=(requests.exceptions.RequestException,),
+    )
     def _get(self, path: str, params: dict = None) -> dict:
         """Make GET request with rate limiting (5xx retried with backoff)."""
         if self.session is None:
@@ -182,13 +189,15 @@ class BRREGClient:
     def search_by_name(self, name: str, size: int = 5) -> list[dict]:
         """Search companies by name. Returns raw enhet dicts (may be empty)."""
         try:
-            result = self._get("/enheter", {"navn": name, "size": max(1, min(size, 100))})
+            result = self._get(
+                "/enheter", {"navn": name, "size": max(1, min(size, 100))}
+            )
             return result.get("_embedded", {}).get("enheter", [])
         except Exception as exc:
             logger.error("BRREG name search failed for '%s': %s", name, exc)
             return []
 
-    def get_company_details(self, org_number: str) -> Optional[dict]:
+    def get_company_details(self, org_number: str) -> dict | None:
         """
         Get detailed information for a specific company.
 
@@ -236,14 +245,18 @@ class BRREGClient:
             logger.error("Error fetching roles for %s: %s", org_number, exc)
             return []
 
-    def get_aquaculture_companies(self, max_results: int = 10000) -> Generator[dict, None, None]:
+    def get_aquaculture_companies(
+        self, max_results: int = 10000
+    ) -> Generator[dict, None, None]:
         """
         Convenience method: Get all aquaculture companies.
         NACE 03.2 = Aquaculture
         """
         return self.get_all_companies_by_nace([NACE_CODES["aquaculture"]], max_results)
 
-    def get_seafood_companies(self, max_results: int = 10000) -> Generator[dict, None, None]:
+    def get_seafood_companies(
+        self, max_results: int = 10000
+    ) -> Generator[dict, None, None]:
         """
         Convenience method: Get all seafood-related companies.
         Includes aquaculture, fish processing, fishing, and wholesale.
@@ -278,17 +291,26 @@ class BRREGClient:
                 - nace_code
                 - nace_description
         """
-        address = company.get("forretningsadresse", {}) or company.get("postadresse", {})
+        address = company.get("forretningsadresse", {}) or company.get(
+            "postadresse", {}
+        )
         nace1 = company.get("naeringskode1", {})
 
         return {
             "org_number": company.get("organisasjonsnummer", ""),
             "name": company.get("navn", ""),
             "website": company.get("hjemmeside", ""),
-            "address": ", ".join(filter(None, [
-                address.get("adresse", [None])[0] if address.get("adresse") else None,
-                address.get("poststed", ""),
-            ])),
+            "address": ", ".join(
+                filter(
+                    None,
+                    [
+                        address.get("adresse", [None])[0]
+                        if address.get("adresse")
+                        else None,
+                        address.get("poststed", ""),
+                    ],
+                )
+            ),
             "postal_code": address.get("postnummer", ""),
             "city": address.get("poststed", ""),
             "employee_count": company.get("antallAnsatte", 0),
@@ -331,18 +353,27 @@ class BRREGClient:
                 continue
 
             name_parts = person.get("navn", {})
-            full_name = " ".join(filter(None, [
-                name_parts.get("fornavn", ""),
-                name_parts.get("mellomnavn", ""),
-                name_parts.get("etternavn", ""),
-            ]))
+            full_name = " ".join(
+                filter(
+                    None,
+                    [
+                        name_parts.get("fornavn", ""),
+                        name_parts.get("mellomnavn", ""),
+                        name_parts.get("etternavn", ""),
+                    ],
+                )
+            )
 
             if full_name:
-                decision_makers.append({
-                    "name": full_name,
-                    "role_code": role_code,
-                    "role_description": role.get("rolle", {}).get("beskrivelse", ""),
-                    "birth_date": person.get("fodselsdato", ""),
-                })
+                decision_makers.append(
+                    {
+                        "name": full_name,
+                        "role_code": role_code,
+                        "role_description": role.get("rolle", {}).get(
+                            "beskrivelse", ""
+                        ),
+                        "birth_date": person.get("fodselsdato", ""),
+                    }
+                )
 
         return decision_makers

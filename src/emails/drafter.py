@@ -8,11 +8,10 @@ status='draft' and must be reviewed + approved before sending.
 
 import logging
 import os
-from typing import Optional
 
 from src.database import db
-from src.emails.templates import TEMPLATES
 from src.emails.ai_drafter import generate_ai_opener
+from src.emails.templates import TEMPLATES
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +23,7 @@ def auto_draft_for_new_prospect(
     prospect_id: int,
     job_posting_id: int,
     template_name: str = None,
-) -> Optional[int]:
+) -> int | None:
     """
     Generate an email draft for a newly added prospect.
 
@@ -93,6 +92,7 @@ def auto_draft_for_new_prospect(
             tpl_name = f"ai_{tpl_name}"
             if company_context:
                 import json
+
                 ai_context_json = json.dumps(company_context)
 
     draft_data = {
@@ -121,13 +121,16 @@ def auto_draft_for_new_prospect(
         if prospect.get("linkedin_url"):
             try:
                 from src.emails.linkedin_templates import connection_request
+
                 li_text = connection_request(prospect, posting)
-                db.insert_linkedin_message({
-                    "prospect_id": prospect_id,
-                    "draft_id": draft_id,
-                    "message_type": "connection_request",
-                    "message_text": li_text,
-                })
+                db.insert_linkedin_message(
+                    {
+                        "prospect_id": prospect_id,
+                        "draft_id": draft_id,
+                        "message_type": "connection_request",
+                        "message_text": li_text,
+                    }
+                )
                 logger.info("Created LinkedIn message for prospect %d", prospect_id)
             except Exception as exc:
                 logger.warning("Failed to create LinkedIn message: %s", exc)
@@ -147,9 +150,20 @@ def _pick_template(prospect: dict) -> str:
 
     # Decision-makers get the value proposition
     executive_keywords = [
-        "ceo", "cto", "cfo", "coo", "director", "direktoer",
-        "daglig leder", "adm.dir", "administrerende",
-        "managing", "partner", "founder", "grunder", "eier",
+        "ceo",
+        "cto",
+        "cfo",
+        "coo",
+        "director",
+        "direktoer",
+        "daglig leder",
+        "adm.dir",
+        "administrerende",
+        "managing",
+        "partner",
+        "founder",
+        "grunder",
+        "eier",
     ]
     for kw in executive_keywords:
         if kw in position:
@@ -157,8 +171,13 @@ def _pick_template(prospect: dict) -> str:
 
     # HR / recruitment get the short intro
     hr_keywords = [
-        "hr", "human resources", "personal", "rekruttering",
-        "recruitment", "talent", "people",
+        "hr",
+        "human resources",
+        "personal",
+        "rekruttering",
+        "recruitment",
+        "talent",
+        "people",
     ]
     for kw in hr_keywords:
         if kw in position:
@@ -180,7 +199,11 @@ def regenerate_draft(
         return False
 
     prospect = db.get_prospect_by_id(draft["prospect_id"])
-    posting = db.get_job_posting_by_id(draft["job_posting_id"]) if draft.get("job_posting_id") else {}
+    posting = (
+        db.get_job_posting_by_id(draft["job_posting_id"])
+        if draft.get("job_posting_id")
+        else {}
+    )
     posting = posting or {}
 
     tpl_name = template_name or DEFAULT_TEMPLATE
@@ -193,12 +216,15 @@ def regenerate_draft(
     except Exception:
         return False
 
-    db.update_email_draft(draft_id, {
-        "template_name": tpl_name,
-        "subject": subject,
-        "body": body,
-        "status": "draft",
-        "approved_at": None,
-    })
+    db.update_email_draft(
+        draft_id,
+        {
+            "template_name": tpl_name,
+            "subject": subject,
+            "body": body,
+            "status": "draft",
+            "approved_at": None,
+        },
+    )
     logger.info("Regenerated draft #%d with template '%s'", draft_id, tpl_name)
     return True

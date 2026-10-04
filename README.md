@@ -47,6 +47,7 @@ python main.py --host 0.0.0.0 --port 8080
 | `PIPELINE_WORKERS` | `1` | parallel posting workers (`2`–`4` with Snov credits) |
 | `DOMAIN_TIMEOUT_SEC` | `300` | max seconds per company domain |
 | `SNOV_MIN_CREDITS` | `0` | abort run below this balance (`0` = only when empty) |
+| `SNOV_LOW_WATER_CREDITS` | `200` | warn (+ webhook) when balance drops below this |
 | `SNOV_CLIENT_ID` / `SNOV_CLIENT_SECRET` | — | enrichment (required for prospects) |
 | `SNOV_LIST_ID` | auto-created | Snov campaign list |
 | `RESEND_API_KEY` | — | direct email sending |
@@ -57,6 +58,8 @@ python main.py --host 0.0.0.0 --port 8080
 | `FLASK_SECRET` | ephemeral + warning | set a real value in production |
 | `DASHBOARD_USER` / `DASHBOARD_PASS` | unset (open) | basic-auth login for the dashboard |
 | `LOG_LEVEL` | `INFO` | logging verbosity |
+| `LOG_FORMAT` | `pretty` | `pretty` (colored) or `json` (one object per line, for aggregation) |
+| `LEADS_DB_PATH` | `./leads.db` | override the SQLite file location |
 
 Central defaults and validation live in `src/config.py`.
 
@@ -73,12 +76,15 @@ Central defaults and validation live in `src/config.py`.
 ## Testing
 
 ```bash
-pytest tests/ -v                        # full suite (123 tests)
+pytest tests/ -v                        # full suite (165 tests)
 pytest tests/test_hardening.py -v       # security/safety regression tests
-pytest tests/test_database.py -v        # schema, migrations, queries
+pytest tests/test_pipeline_run.py -v    # mocked end-to-end pipeline runs
+ruff check src tests                    # lint (enforced in CI)
+ruff format --check src tests           # formatting
 ```
 
-`pytest.ini` scopes collection to `tests/` (root `test_*.py` helpers are manual live-API scripts, not CI tests).
+Test scope, asyncio mode, and lint rules live in `pyproject.toml`.
+`manual/` holds live-API debug scripts (real sites/credits, never in CI).
 
 ## Project layout
 
@@ -104,7 +110,8 @@ tests/                  pytest suite
 
 `/` dashboard · `/postings` · `/prospects` (+`/profile`) · `/campaigns`
 (+`/ab-tests`, `/linkedin`) · `/crm` kanban · `/settings` (pipeline controls,
-keywords, exports) · `/webhooks/resend` (Resend events endpoint)
+keywords, exports) · `/webhooks/resend` (Resend events endpoint) ·
+`/healthz` (unauthenticated liveness probe: process + DB counts)
 
 ## Docs
 

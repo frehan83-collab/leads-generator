@@ -69,10 +69,16 @@ production-grade for unattended multi-user operation.
 - [ ] (remaining) Per-run page budget cap beyond deadline; httpx upgrade (optional)
 
 ### P2 — Operability
-- [ ] Structured JSON logs + `/healthz` endpoint + Snov-credit low-water alert
-- [ ] `requirements-dev.txt`, CI (pytest + ruff), pre-commit hooks
-- [ ] Archive root `test_*.py` live scripts → `manual/`; retire `migrate_database.py` (superseded by `db._migrate`)
-- [ ] Postgres path (`DATABASE_URL`) when multi-user/concurrency is needed
+- [x] Structured JSON logs (`LOG_FORMAT=json`, console + rotating file)
+- [x] `/healthz` endpoint (process + DB counts, auth-exempt, 503 when degraded)
+- [x] Snov-credit low-water alert (`SNOV_LOW_WATER_CREDITS`, warning + webhook)
+- [x] `requirements-dev.txt`, ruff clean (`check` enforced, `format` applied),
+  rewritten CI (3.12, both requirement files, lint + tests), pre-commit hooks
+- [x] Root live scripts → `manual/` (+README); `migrate_database.py` retired
+  (superseded by `db._migrate` v2); `LEADS_DB_PATH` override
+- [ ] Postgres path (`DATABASE_URL`) — **deferred deliberately**: single-writer
+  SQLite + WAL + busy_timeout is correct for single-operator use; revisit only
+  when multi-user concurrency is actually needed
 
 ### P3 — Growth
 - [ ] Additional sources (LinkedIn jobs via API partners, company career pages)

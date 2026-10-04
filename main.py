@@ -21,18 +21,20 @@ load_dotenv()
 
 def cmd_web(host: str = "127.0.0.1", port: int = 5000):
     from src.web.app import start_web
+
     start_web(host=host, port=port, with_scheduler=True)
 
 
 def cmd_run_now(sources: list[str] = None):
     from src.config import settings
     from src.pipeline.lead_pipeline import LeadPipeline
+
     keywords = settings.finn_keywords
     snov_list_id = settings.snov_list_id
 
     # Default to both finn and nav if not specified
     if not sources:
-        sources = ['finn', 'nav']
+        sources = ["finn", "nav"]
 
     print(f"\nRunning pipeline with sources: {', '.join(sources)}")
     print(f"Keywords: {', '.join(keywords)}\n")
@@ -51,6 +53,7 @@ def cmd_run_now(sources: list[str] = None):
 
 def cmd_scheduler():
     from src.scheduler.runner import start_scheduler
+
     run_time = os.getenv("RUN_TIME", "09:30")
     start_scheduler(run_time=run_time)
 
@@ -104,13 +107,28 @@ if __name__ == "__main__":
     logger = logging.getLogger(__name__)
 
     parser = argparse.ArgumentParser(description="Sperton Leads Generator")
-    parser.add_argument("--web", action="store_true", help="Start web dashboard (default)")
-    parser.add_argument("--cli", action="store_true", help="Start CLI scheduler (no web)")
+    parser.add_argument(
+        "--web", action="store_true", help="Start web dashboard (default)"
+    )
+    parser.add_argument(
+        "--cli", action="store_true", help="Start CLI scheduler (no web)"
+    )
     parser.add_argument("--now", action="store_true", help="Run pipeline immediately")
-    parser.add_argument("--status", action="store_true", help="Show status and account info")
-    parser.add_argument("--sources", nargs="+", choices=["finn", "nav", "karrierestart", "jobbnorge"], help="Sources to scrape (default: finn nav)")
-    parser.add_argument("--host", default="127.0.0.1", help="Web server host (default: 127.0.0.1)")
-    parser.add_argument("--port", type=int, default=5000, help="Web server port (default: 5000)")
+    parser.add_argument(
+        "--status", action="store_true", help="Show status and account info"
+    )
+    parser.add_argument(
+        "--sources",
+        nargs="+",
+        choices=["finn", "nav", "karrierestart", "jobbnorge"],
+        help="Sources to scrape (default: finn nav)",
+    )
+    parser.add_argument(
+        "--host", default="127.0.0.1", help="Web server host (default: 127.0.0.1)"
+    )
+    parser.add_argument(
+        "--port", type=int, default=5000, help="Web server port (default: 5000)"
+    )
     args = parser.parse_args()
 
     if args.status:

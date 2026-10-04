@@ -6,10 +6,11 @@ Uses Playwright for reliable rendering of dynamic content.
 
 import logging
 import re
-from datetime import datetime, timezone
-from typing import Generator
+from collections.abc import Generator
+from datetime import UTC, datetime
 
-from playwright.sync_api import Page, TimeoutError as PWTimeout
+from playwright.sync_api import Page
+from playwright.sync_api import TimeoutError as PWTimeout
 
 from src.scraper.base import accept_cookies, browser_context
 
@@ -38,19 +39,27 @@ def _extract_job_id(url: str) -> str:
 def _parse_listing_page(page: Page, keyword: str) -> list[dict]:
     results = []
     try:
-        page.wait_for_selector("a[href*='/job/'], .job-listing, article, .search-result", timeout=12000)
+        page.wait_for_selector(
+            "a[href*='/job/'], .job-listing, article, .search-result", timeout=12000
+        )
     except PWTimeout:
         logger.warning("No job listings found on Jobbnorge for '%s'", keyword)
         return results
 
-    cards = page.query_selector_all(".job-listing, article, .search-result, [class*='job-item'], .list-group-item")
+    cards = page.query_selector_all(
+        ".job-listing, article, .search-result, [class*='job-item'], .list-group-item"
+    )
     if not cards:
         cards = page.query_selector_all("a[href*='/job/']")
 
     seen_ids = set()
     for card in cards:
         try:
-            link_el = card.query_selector("a[href*='/job/']") if card.tag_name != "a" else card
+            link_el = (
+                card.query_selector("a[href*='/job/']")
+                if card.tag_name != "a"
+                else card
+            )
             if not link_el:
                 continue
             href = link_el.get_attribute("href") or ""
@@ -74,12 +83,16 @@ def _parse_listing_page(page: Page, keyword: str) -> list[dict]:
                 continue
 
             company = ""
-            company_el = card.query_selector("[class*='company'], [class*='employer'], [class*='org']")
+            company_el = card.query_selector(
+                "[class*='company'], [class*='employer'], [class*='org']"
+            )
             if company_el:
                 company = company_el.inner_text().strip()
             if not company:
                 container_text = card.inner_text()
-                lines = [l.strip() for l in container_text.split("\n") if l.strip()]
+                lines = [
+                    line.strip() for line in container_text.split("\n") if line.strip()
+                ]
                 if len(lines) > 1:
                     company = lines[1] if lines[1] != title else ""
 
@@ -95,18 +108,20 @@ def _parse_listing_page(page: Page, keyword: str) -> list[dict]:
                 if dt_attr:
                     published_at = dt_attr[:10]
 
-            results.append({
-                "external_id": job_id,
-                "source": "jobbnorge",
-                "title": title,
-                "company_name": company,
-                "company_domain": None,
-                "org_number": None,
-                "location": location,
-                "url": href,
-                "keyword_matched": keyword,
-                "published_at": published_at,
-            })
+            results.append(
+                {
+                    "external_id": job_id,
+                    "source": "jobbnorge",
+                    "title": title,
+                    "company_name": company,
+                    "company_domain": None,
+                    "org_number": None,
+                    "location": location,
+                    "url": href,
+                    "keyword_matched": keyword,
+                    "published_at": published_at,
+                }
+            )
         except Exception as exc:
             logger.debug("Error parsing Jobbnorge card: %s", exc)
             continue
@@ -117,7 +132,9 @@ def _parse_listing_page(page: Page, keyword: str) -> list[dict]:
 
 def _has_next_page(page: Page, current_page: int) -> bool:
     try:
-        next_btn = page.query_selector("a:has-text('Next'), a:has-text('Neste'), a[rel='next'], .pagination .next a")
+        next_btn = page.query_selector(
+            "a:has-text('Next'), a:has-text('Neste'), a[rel='next'], .pagination .next a"
+        )
         if next_btn:
             disabled = next_btn.get_attribute("disabled")
             aria_disabled = next_btn.get_attribute("aria-disabled")
@@ -127,20 +144,24 @@ def _has_next_page(page: Page, current_page: int) -> bool:
     return False
 
 
-def scrape_keyword(keyword: str, max_pages: int = 5, browser=None, known_ids: set = None) -> Generator[dict, None, None]:
+def scrape_keyword(
+    keyword: str, max_pages: int = 5, browser=None, known_ids: set = None
+) -> Generator[dict, None, None]:
     logger.info("Scraping jobbnorge.no for keyword: '%s'", keyword)
     total = 0
 
     with browser_context(browser) as context:
         page = context.new_page()
-        for posting in _scrape_pages(page, keyword, max_pages, known_ids):
-            yield posting
-            total += 1
+        batch = list(_scrape_pages(page, keyword, max_pages, known_ids))
+        total += len(batch)
+        yield from batch
 
     logger.info("Scraped %d postings from jobbnorge.no for '%s'", total, keyword)
 
 
-def _scrape_pages(page: Page, keyword: str, max_pages: int, known_ids: set = None) -> Generator[dict, None, None]:
+def _scrape_pages(
+    page: Page, keyword: str, max_pages: int, known_ids: set = None
+) -> Generator[dict, None, None]:
     for page_num in range(1, max_pages + 1):
         url = _build_search_url(keyword, page_num)
         logger.debug("Fetching jobbnorge page %d: %s", page_num, url)
@@ -155,18 +176,28 @@ def _scrape_pages(page: Page, keyword: str, max_pages: int, known_ids: set = Non
 
             postings = _parse_listing_page(page, keyword)
             if not postings:
-                logger.info("No results on Jobbnorge page %d for '%s', stopping.", page_num, keyword)
+                logger.info(
+                    "No results on Jobbnorge page %d for '%s', stopping.",
+                    page_num,
+                    keyword,
+                )
                 break
 
             if known_ids is not None:
-                new_postings = [p for p in postings if p["external_id"] not in known_ids]
+                new_postings = [
+                    p for p in postings if p["external_id"] not in known_ids
+                ]
                 if not new_postings:
-                    logger.info("All %d postings on page %d already known for '%s', stopping early.", len(postings), page_num, keyword)
+                    logger.info(
+                        "All %d postings on page %d already known for '%s', stopping early.",
+                        len(postings),
+                        page_num,
+                        keyword,
+                    )
                     break
                 postings = new_postings
 
-            for posting in postings:
-                yield posting
+            yield from postings
 
             if not _has_next_page(page, page_num):
                 break
@@ -181,14 +212,20 @@ def _scrape_pages(page: Page, keyword: str, max_pages: int, known_ids: set = Non
             break
 
 
-def scrape_all_keywords(keywords: list[str], max_pages: int = 5, browser=None, known_ids: set = None) -> Generator[dict, None, None]:
+def scrape_all_keywords(
+    keywords: list[str], max_pages: int = 5, browser=None, known_ids: set = None
+) -> Generator[dict, None, None]:
     seen_ids: set[str] = set()
     for keyword in keywords:
-        for posting in scrape_keyword(keyword.strip(), max_pages=max_pages, browser=browser, known_ids=known_ids):
+        for posting in scrape_keyword(
+            keyword.strip(), max_pages=max_pages, browser=browser, known_ids=known_ids
+        ):
             jid = posting["external_id"]
             if jid not in seen_ids:
                 seen_ids.add(jid)
-                posting["scraped_at"] = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+                posting["scraped_at"] = (
+                    datetime.now(UTC).replace(tzinfo=None).isoformat()
+                )
                 yield posting
             else:
                 logger.debug("Duplicate jobbnorge id=%s skipped", jid)
