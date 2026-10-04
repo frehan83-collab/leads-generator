@@ -1754,6 +1754,56 @@ def get_domains_for_career_scan(limit: int = 30, since_days: int = 90) -> list[d
     return [dict(r) for r in rows]
 
 
+def get_company_website(
+    org_number: str | None = None, company_name: str | None = None
+) -> str | None:
+    """Company website domain from the local BRREG table (free, no credits).
+
+    Tries exact org match, then fuzzy name match. Returns a clean domain
+    (no scheme, no www, lowercase) or None.
+    """
+    from urllib.parse import urlparse
+
+    def _clean(raw: str | None) -> str | None:
+        if not raw:
+            return None
+        raw = raw.strip()
+        if not raw:
+            return None
+        netloc = urlparse(raw if "://" in raw else f"https://{raw}").netloc.lower()
+        netloc = netloc.removeprefix("www.")
+        return netloc or None
+
+    with get_connection() as conn:
+        if org_number:
+            row = conn.execute(
+                "SELECT website FROM companies WHERE org_number = ?", (org_number,)
+            ).fetchone()
+            if row:
+                cleaned = _clean(row[0])
+                if cleaned:
+                    return cleaned
+        if company_name:
+            from rapidfuzz import fuzz, process
+
+            names = [
+                r[0]
+                for r in conn.execute(
+                    "SELECT name FROM companies WHERE name IS NOT NULL"
+                ).fetchall()
+            ]
+            match = process.extractOne(
+                company_name, names, scorer=fuzz.token_sort_ratio, score_cutoff=85
+            )
+            if match:
+                row = conn.execute(
+                    "SELECT website FROM companies WHERE name = ?", (match[0],)
+                ).fetchone()
+                if row:
+                    return _clean(row[0])
+    return None
+
+
 def get_postings_for_revalidation(
     limit: int = 50, older_than_days: int = 7
 ) -> list[dict]:

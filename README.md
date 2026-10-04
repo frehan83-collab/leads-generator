@@ -81,7 +81,7 @@ Central defaults and validation live in `src/config.py`.
 ## Testing
 
 ```bash
-pytest tests/ -v                        # full suite (213 tests)
+pytest tests/ -v                        # full suite (222 tests)
 pytest tests/test_hardening.py -v       # security/safety regression tests
 pytest tests/test_pipeline_run.py -v    # mocked end-to-end pipeline runs
 ruff check src tests                    # lint (enforced in CI)
@@ -117,6 +117,8 @@ tests/                  pytest suite
 (+`/ab-tests`, `/linkedin`) · `/crm` kanban · `/scores` (leaderboard + calibration) · `/settings` (pipeline controls,
 keywords, exports) · `/webhooks/resend` (Resend events endpoint) ·
 `/healthz` (unauthenticated liveness probe: process + DB counts) · `/api/run-progress` (live job state JSON)
+
+Data tables remember rows-per-page (25 / 50 / 100 / 200) per browser session.
 
 ## Docs
 

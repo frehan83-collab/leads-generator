@@ -146,18 +146,19 @@
 <!-- Pagination -->
 {% if total_pages > 1 %}
 <div class="flex items-center justify-between mt-5 animate-card" style="animation-delay: 150ms">
-    <div class="text-xs text-slate-600">
-        Showing <span class="font-mono text-slate-400">{{ ((page - 1) * 25) + 1 }}-{{ [page * 25, total] | min }}</span> of <span class="font-mono text-slate-400">{{ total }}</span>
+    <div class="text-xs text-slate-600 flex items-center gap-3">
+        <span>Showing <span class="font-mono text-slate-400">{{ ((page - 1) * per_page) + 1 }}-{{ [page * per_page, total] | min }}</span> of <span class="font-mono text-slate-400">{{ total }}</span></span>
+        {% include "_per_page.html" %}
     </div>
     <div class="flex items-center gap-1.5">
         {% if page > 1 %}
-        <a href="?page={{ page - 1 }}&search={{ search }}&keyword={{ keyword }}" class="btn-secondary !py-1.5 !px-3 !text-xs">&larr; Prev</a>
+        <a href="?page={{ page - 1 }}&search={{ search }}&keyword={{ keyword }}&per_page={{ per_page }}" class="btn-secondary !py-1.5 !px-3 !text-xs">&larr; Prev</a>
         {% endif %}
         {% for pg in range(1, total_pages + 1) %}
             {% if pg == page %}
             <span class="w-8 h-8 rounded-lg bg-blue-500/15 text-blue-400 flex items-center justify-center text-xs font-semibold">{{ pg }}</span>
             {% elif pg <= 3 or pg > total_pages - 2 or (pg >= page - 1 and pg <= page + 1) %}
-            <a href="?page={{ pg }}&search={{ search }}&keyword={{ keyword }}" class="w-8 h-8 rounded-lg text-slate-500 hover:bg-slate-800/60 hover:text-slate-300 flex items-center justify-center text-xs transition-all">{{ pg }}</a>
+            <a href="?page={{ pg }}&search={{ search }}&keyword={{ keyword }}&per_page={{ per_page }}" class="w-8 h-8 rounded-lg text-slate-500 hover:bg-slate-800/60 hover:text-slate-300 flex items-center justify-center text-xs transition-all">{{ pg }}</a>
             {% elif pg == 4 and page > 5 %}
             <span class="text-slate-700 text-xs px-1">&hellip;</span>
             {% elif pg == total_pages - 2 and page < total_pages - 4 %}
@@ -165,7 +166,7 @@
             {% endif %}
         {% endfor %}
         {% if page < total_pages %}
-        <a href="?page={{ page + 1 }}&search={{ search }}&keyword={{ keyword }}" class="btn-secondary !py-1.5 !px-3 !text-xs">Next &rarr;</a>
+        <a href="?page={{ page + 1 }}&search={{ search }}&keyword={{ keyword }}&per_page={{ per_page }}" class="btn-secondary !py-1.5 !px-3 !text-xs">Next &rarr;</a>
         {% endif %}
     </div>
 </div>

@@ -710,7 +710,15 @@ class LeadPipeline:
             if domain:
                 return domain
 
-        # Strategy 3: Snov.io with cleaned company name (fallback)
+        # Strategy 3: local BRREG table (free — website from org or fuzzy name)
+        domain = db.get_company_website(
+            posting.get("org_number"), company_name=company_name
+        )
+        if domain:
+            logger.debug("Domain for '%s' from local BRREG: %s", company_name, domain)
+            return domain
+
+        # Strategy 4: Snov.io with cleaned company name (fallback, costs credits)
         cleaned = self._clean_company_name(company_name)
         domain = self.snov.find_domain_by_company_name(cleaned)
         if domain:

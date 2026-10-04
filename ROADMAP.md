@@ -141,3 +141,14 @@ production-grade for unattended multi-user operation.
   drafts; draft-detail banner; brief status dots
 - [x] Intent/demand/counts exclude expired postings
 - [x] 12 new tests; ruff clean
+
+### World-class batch 5 — table prefs, lead quality, domain recall
+- [x] Rows-per-page selector (25/50/100/200) on postings/prospects/campaigns/
+  LinkedIn, remembered per session; fixed hardcoded ×25 range text and the
+  dropped company filter in prospects pagination
+- [x] Lead quality (`src/scoring/lead_quality.py`): role-inbox detection
+  (conservative set — hr/sales/kontakt stay eligible) + identity confidence;
+  hot widget excludes role inboxes; prospects table badges
+- [x] BRREG-website domain fallback (`db.get_company_website`: org → fuzzy
+  name) ahead of paid Snov lookup — Mowi-class misses now resolve free
+- [x] 9 new tests; suite 213 → 222 green; ruff clean

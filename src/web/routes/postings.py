@@ -17,6 +17,7 @@ from src.export.csv_exporter import (
     stream_postings_csv,
 )
 from src.web.auth import audit
+from src.web.pagination import page_size
 
 postings_bp = Blueprint("postings", __name__)
 
@@ -26,7 +27,7 @@ def postings():
     search = request.args.get("search", "").strip()
     keyword = request.args.get("keyword", "").strip()
     page = max(1, int(request.args.get("page", 1)))
-    per_page = 50
+    per_page = page_size()
 
     rows, total = db.get_job_postings(
         search=search or None,
@@ -42,6 +43,7 @@ def postings():
         postings=rows,
         total=total,
         page=page,
+        per_page=per_page,
         total_pages=total_pages,
         search=search,
         keyword=keyword,

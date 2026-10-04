@@ -23,8 +23,13 @@ def index():
     # F4: LinkedIn stats
     linkedin_stats = db.get_linkedin_stats()
 
-    # C3: Hot prospects — v2 scores first, v1 intent as fallback
-    hot_prospects = db.get_hot_prospects_v2(5)
+    # C3: Hot prospects — v2 scores first, v1 intent as fallback.
+    # Role inboxes (info@, support@, ...) never headline a hot list.
+    from src.scoring.lead_quality import is_role_address
+
+    hot_prospects = [
+        p for p in db.get_hot_prospects_v2(15) if not is_role_address(p.get("email"))
+    ][:5]
     if not hot_prospects:
         hot_prospects = [
             {

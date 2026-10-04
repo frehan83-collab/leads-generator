@@ -12,6 +12,7 @@ from src.emails.drafter import regenerate_draft
 from src.emails.templates import TEMPLATES
 from src.web.auth import audit
 from src.web.jobstate import is_running, set_running
+from src.web.pagination import page_size
 
 campaigns_bp = Blueprint("campaigns", __name__)
 logger = logging.getLogger(__name__)
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 def campaigns():
     status_filter = request.args.get("status", "").strip()
     page = max(1, int(request.args.get("page", 1)))
-    per_page = 20
+    per_page = page_size()
 
     drafts, total = db.get_email_drafts(
         status=status_filter or None,
@@ -38,6 +39,7 @@ def campaigns():
         drafts=drafts,
         total=total,
         page=page,
+        per_page=per_page,
         total_pages=total_pages,
         status_filter=status_filter,
         status_counts=status_counts,
@@ -287,7 +289,7 @@ def linkedin_list():
     """LinkedIn outreach list view."""
     status_filter = request.args.get("status", "").strip()
     page = max(1, int(request.args.get("page", 1)))
-    per_page = 20
+    per_page = page_size()
 
     messages, total = db.get_linkedin_messages_list(
         status=status_filter or None,
@@ -303,6 +305,7 @@ def linkedin_list():
         messages=messages,
         total=total,
         page=page,
+        per_page=per_page,
         total_pages=total_pages,
         status_filter=status_filter,
         linkedin_stats=linkedin_stats,

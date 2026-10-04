@@ -8,6 +8,7 @@ from src.export.csv_exporter import (
     build_prospects_xlsx,
     stream_prospects_csv,
 )
+from src.web.pagination import page_size
 
 prospects_bp = Blueprint("prospects", __name__)
 
@@ -18,7 +19,7 @@ def prospects():
     email_status = request.args.get("email_status", "").strip()
     company = request.args.get("company", "").strip()
     page = max(1, int(request.args.get("page", 1)))
-    per_page = 50
+    per_page = page_size()
 
     rows, total = db.get_prospects_filtered(
         search=search or None,
@@ -29,11 +30,18 @@ def prospects():
     )
     total_pages = max(1, (total + per_page - 1) // per_page)
 
+    from src.scoring.lead_quality import identity_confidence, is_role_address
+
+    for row in rows:
+        row["is_role"] = is_role_address(row.get("email"))
+        row["name_conf"] = identity_confidence(row)
+
     return render_template(
         "prospects.html",
         prospects=rows,
         total=total,
         page=page,
+        per_page=per_page,
         total_pages=total_pages,
         search=search,
         email_status=email_status,
