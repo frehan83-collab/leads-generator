@@ -83,3 +83,11 @@ def scores():
         except (ValueError, TypeError):
             row["components"] = {}
     return render_template("scores.html", scores=rows, calibration=calibration_report())
+
+
+@dashboard_bp.route("/actions")
+def actions():
+    """The rep's morning page: who to call, what to review, what's new."""
+    from src.actions.today import get_today_actions
+
+    return render_template("actions.html", **get_today_actions())

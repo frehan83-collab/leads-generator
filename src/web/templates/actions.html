@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Today{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="mb-6 animate-card">
+    <h1 class="text-2xl font-bold text-white tracking-tight">Today</h1>
+    <p class="text-slate-500 text-sm mt-1">Call the engaged, review the best, spot what's new</p>
+</div>
+
+<!-- Call now -->
+<div class="card animate-card mb-5">
+    <div class="flex items-center gap-3 mb-4">
+        <div class="w-8 h-8 rounded-lg bg-emerald-500/15 flex items-center justify-center flex-shrink-0">
+            <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z"/></svg>
+        </div>
+        <div>
+            <h2 class="text-sm font-semibold text-slate-200">Call now</h2>
+            <p class="text-[11px] text-slate-600">Opened or clicked, never answered — hottest first</p>
+        </div>
+    </div>
+    {% if call_now %}
+    <div class="space-y-1">
+        {% for c in call_now %}
+        <a href="/prospects/{{ c.id }}/brief" class="flex items-center gap-3 py-2.5 px-2 rounded-lg border-b border-slate-800/50 last:border-0 hover:bg-slate-700/20 transition-colors group">
+            <div class="w-8 h-8 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                <span class="text-[11px] font-bold text-emerald-300">{{ (c.full_name or '?')[:1] | upper }}</span>
+            </div>
+            <div class="min-w-0 flex-1">
+                <div class="text-[13px] text-slate-200 truncate group-hover:text-white transition-colors">{{ c.full_name or c.email }}{% if c.position %} <span class="text-slate-600">· {{ c.position }}</span>{% endif %}</div>
+                <div class="text-[11px] text-slate-600 truncate">{{ c.company_name or c.company_domain }} · engaged {{ (c.last_engagement or '')[:10] }}{% if c.engaged_subject %} · “{{ c.engaged_subject[:50] }}”{% endif %}</div>
+            </div>
+            <span class="font-mono font-bold text-[13px] text-orange-400 flex-shrink-0">{{ c.score }}</span>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-xs text-slate-600">Nobody waiting on a call — engagement will appear here once emails go out.</p>
+    {% endif %}
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+    <!-- Review -->
+    <div class="card animate-card" style="animation-delay: 60ms">
+        <div class="flex items-center justify-between mb-4">
+            <div>
+                <h2 class="text-sm font-semibold text-slate-200">Review drafts</h2>
+                <p class="text-[11px] text-slate-600">Unreviewed, best companies first</p>
+            </div>
+            <a href="/campaigns/review-next" class="btn-primary !text-xs !py-1.5">Review next &rarr;</a>
+        </div>
+        {% if review %}
+        <div class="space-y-1">
+            {% for d in review %}
+            <a href="/campaigns/{{ d.id }}" class="block py-2 px-2 rounded-lg border-b border-slate-800/50 last:border-0 hover:bg-slate-700/20 transition-colors">
+                <div class="text-[13px] text-slate-200 truncate">{{ d.subject }}</div>
+                <div class="text-[11px] text-slate-600 truncate">{{ d.full_name }} · {{ d.company_name }} · <span class="font-mono text-orange-400/90">{{ d.score }}</span></div>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-xs text-slate-600">Review queue is clear.</p>
+        {% endif %}
+    </div>
+
+    <!-- Hot & untouched -->
+    <div class="card animate-card" style="animation-delay: 100ms">
+        <h2 class="text-sm font-semibold text-slate-200 mb-1">Hot &amp; untouched</h2>
+        <p class="text-[11px] text-slate-600 mb-4">Warm+ companies, valid email, zero outreach started</p>
+        {% if hot_new %}
+        <div class="space-y-1">
+            {% for h in hot_new %}
+            <a href="/prospects/{{ h.id }}/profile" class="flex items-center gap-3 py-2 px-2 rounded-lg border-b border-slate-800/50 last:border-0 hover:bg-slate-700/20 transition-colors group">
+                <div class="min-w-0 flex-1">
+                    <div class="text-[13px] text-slate-200 truncate group-hover:text-white transition-colors">{{ h.full_name or h.email }}{% if h.position %} <span class="text-slate-600">· {{ h.position }}</span>{% endif %}</div>
+                    <div class="text-[11px] text-slate-600 truncate">{{ h.company_name }}</div>
+                </div>
+                <span class="font-mono font-bold text-[13px] text-orange-400 flex-shrink-0">{{ h.score }}</span>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-xs text-slate-600">Nothing untouched at warm+ companies.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

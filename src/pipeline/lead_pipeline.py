@@ -92,6 +92,14 @@ class LeadPipeline:
         )
         db.init_db()
 
+        # Safety first: snapshot the DB before mutating anything.
+        try:
+            from src.database.backup import backup_database
+
+            backup_database()
+        except Exception as exc:
+            logger.warning("Pre-run backup failed (continuing anyway): %s", exc)
+
         # Track this pipeline run
         self._run_id = db.insert_pipeline_run()
 

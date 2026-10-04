@@ -96,7 +96,7 @@ Central defaults and validation live in `src/config.py`.
 ## Testing
 
 ```bash
-pytest tests/ -v                        # full suite (242 tests)
+pytest tests/ -v                        # full suite (247 tests)
 pytest tests/test_hardening.py -v       # security/safety regression tests
 pytest tests/test_pipeline_run.py -v    # mocked end-to-end pipeline runs
 ruff check src tests                    # lint (enforced in CI)
@@ -128,12 +128,15 @@ tests/                  pytest suite
 
 ## Dashboard routes
 
-`/` dashboard (live job status) · `/postings` · `/prospects` (+`/profile`, +`/brief` meeting brief) · `/campaigns`
+`/` dashboard (live job status) · `/actions` (today: calls, reviews, hot-new) · `/postings` · `/prospects` (+`/profile`, +`/brief` meeting brief) · `/campaigns`
 (+`/ab-tests`, `/linkedin`) · `/crm` kanban · `/scores` (leaderboard + calibration) · `/settings` (pipeline controls,
 keywords, exports) · `/webhooks/resend` (Resend events endpoint) ·
 `/healthz` (unauthenticated liveness probe: process + DB counts) · `/api/run-progress` (live job state JSON)
 
 Data tables remember rows-per-page (25 / 50 / 100 / 200) per browser session.
+
+Every pipeline run snapshots the database to `backups/` first (keeps 14).
+`python main.py --backup` takes one on demand.
 
 ## Docs
 

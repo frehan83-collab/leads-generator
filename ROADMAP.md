@@ -172,3 +172,11 @@ production-grade for unattended multi-user operation.
 - [x] Review-next queue (highest-score unreviewed draft first + header button)
 - [x] Hot-lead alerts (newly-hot domains → webhook, dedicated title)
 - [x] 9 new tests; suite 233 → 242 green; ruff clean
+
+### World-class batch 8 — morning page + backups
+- [x] Pre-run DB snapshot (`src/database/backup.py`, online API, 14 retained)
+  + `main.py --backup`
+- [x] `/actions` morning page (`src/actions/today.py`): call-now (engaged,
+  unanswered, hottest first), draft reviews, hot-&-untouched — all linked
+  to briefs/profiles/drafts
+- [x] 5 new tests; suite 242 → 247 green; ruff clean

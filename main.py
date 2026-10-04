@@ -70,6 +70,16 @@ def cmd_check_inbox():
         print(f"  error: {error}")
 
 
+def cmd_backup():
+    from src.database.backup import backup_database
+
+    path = backup_database()
+    if path:
+        print(f"\nBackup written: {path}")
+    else:
+        print("\nBackup failed — see logs.")
+
+
 def cmd_status():
     from src.database.db import get_connection, init_db
     from src.snov.client import SnovClient
@@ -140,6 +150,9 @@ if __name__ == "__main__":
         "--check-inbox", action="store_true", help="Check mailbox for replies once"
     )
     parser.add_argument(
+        "--backup", action="store_true", help="Snapshot the database and exit"
+    )
+    parser.add_argument(
         "--status", action="store_true", help="Show status and account info"
     )
     parser.add_argument(
@@ -158,6 +171,8 @@ if __name__ == "__main__":
 
     if args.status:
         cmd_status()
+    elif args.backup:
+        cmd_backup()
     elif args.check_inbox:
         cmd_check_inbox()
     elif args.now:
