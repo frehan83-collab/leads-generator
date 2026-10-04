@@ -21,6 +21,7 @@ from src.web.routes.health import health_bp
 from src.web.routes.postings import postings_bp
 from src.web.routes.prospects import prospects_bp
 from src.web.routes.settings import settings_bp
+from src.web.routes.unsubscribe import unsubscribe_bp
 from src.web.routes.webhooks import webhooks_bp
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,7 @@ def create_app() -> Flask:
     app.register_blueprint(webhooks_bp)
     app.register_blueprint(crm_bp)
     app.register_blueprint(health_bp)
+    app.register_blueprint(unsubscribe_bp)
 
     # Exempt webhook from CSRF (if CSRF is ever added)
     # webhooks_bp routes accept raw POST from Resend
@@ -60,7 +62,8 @@ def create_app() -> Flask:
         return render_template("500.html"), 500
 
     # Optional HTTP basic auth (set DASHBOARD_USER + DASHBOARD_PASS).
-    # Webhooks and the health probe stay open (Resend delivery, monitoring).
+    # Webhooks, health probe, and unsubscribe stay open (Resend delivery,
+    # monitoring, and recipient opt-outs must never require login).
     if settings.dashboard_user and settings.dashboard_pass:
 
         @app.before_request
@@ -69,6 +72,7 @@ def create_app() -> Flask:
                 request.path.startswith("/webhooks/")
                 or request.path.startswith("/static/")
                 or request.path == "/healthz"
+                or request.path.startswith("/unsubscribe/")
             ):
                 return None
             auth = request.authorization

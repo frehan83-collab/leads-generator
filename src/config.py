@@ -93,6 +93,10 @@ class Settings:
     flask_secret: str | None = os.getenv("FLASK_SECRET")
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
     log_format: str = os.getenv("LOG_FORMAT", "pretty")
+    # Public base URL of this dashboard (for one-click unsubscribe links).
+    # Unset = no URL-based unsubscribe (mailto headers only, if configured).
+    app_base_url: str | None = os.getenv("APP_BASE_URL")
+    unsubscribe_mailto: str | None = os.getenv("UNSUBSCRIBE_MAILTO")
     # Dashboard basic auth. Unset = open dashboard (local use only) + warning.
     dashboard_user: str | None = os.getenv("DASHBOARD_USER")
     dashboard_pass: str | None = os.getenv("DASHBOARD_PASS")

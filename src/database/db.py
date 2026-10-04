@@ -491,6 +491,18 @@ _SCHEMA = """
                 message_id  TEXT UNIQUE NOT NULL,
                 processed_at TEXT NOT NULL
             );
+
+            -- Consent ledger (Markedsføringsloven §15 / GDPR Art.6)
+            CREATE TABLE IF NOT EXISTS consent_log (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                email       TEXT NOT NULL,
+                basis       TEXT NOT NULL DEFAULT 'legitimate_interest',
+                source      TEXT NOT NULL DEFAULT '',
+                note        TEXT NOT NULL DEFAULT '',
+                created_at  TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_consent_log_email
+                ON consent_log(email);
         """
 
 
@@ -1598,17 +1610,18 @@ def get_engagement_timeline(days: int = 30) -> list[dict]:
 def get_sent_drafts_needing_followup(
     min_days: int = 3, max_step: int = 3
 ) -> list[dict]:
-    """Get drafts sent via Resend that had no open event and need a follow-up.
+    """Get sent drafts old enough for the next sequence step.
+
+    Trigger is time-based only (open tracking is disabled on cold sends
+    for deliverability, and an opener who never replied is warmer, not
+    colder). Excludes replied/bounced/suppressed/expired — never chase a
+    responder, a dead address, or a dead role.
 
     Returns drafts where:
     - status = 'sent'
     - resend_id IS NOT NULL (sent via Resend)
     - sent_at >= min_days ago
     - sequence_step < max_step
-    - no 'opened' event exists for this draft
-    - no reply recorded (event or replied_at) — never chase a responder
-    - no bounce recorded for this draft
-    - recipient not suppressed
     """
     with get_connection() as conn:
         rows = conn.execute(
@@ -1624,10 +1637,6 @@ def get_sent_drafts_needing_followup(
                  AND COALESCE(ed.sequence_step, 1) < ?
                  AND NOT EXISTS (
                      SELECT 1 FROM email_events ee
-                     WHERE ee.draft_id = ed.id AND ee.event_type = 'opened'
-                 )
-                 AND NOT EXISTS (
-                     SELECT 1 FROM email_events ee
                      WHERE ee.draft_id = ed.id
                        AND ee.event_type IN ('replied', 'bounced')
                  )
@@ -1635,6 +1644,10 @@ def get_sent_drafts_needing_followup(
                  AND NOT EXISTS (
                      SELECT 1 FROM suppressions s
                      WHERE LOWER(s.email) = LOWER(p.email)
+                 )
+                 AND NOT EXISTS (
+                     SELECT 1 FROM job_postings jp
+                     WHERE jp.id = ed.job_posting_id AND jp.status = 'expired'
                  )
                ORDER BY ed.sent_at ASC""",
             (f"-{min_days} days", max_step),
@@ -1888,6 +1901,41 @@ def mark_inbox_processed(message_id: str) -> None:
             " VALUES (?, ?)",
             (message_id, _now()),
         )
+
+
+# ------------------------------------------------------------------
+# Consent ledger
+# ------------------------------------------------------------------
+
+CONSENT_BASES = frozenset({"consent", "legitimate_interest", "existing_customer"})
+
+
+def log_consent(email: str, basis: str, source: str = "", note: str = "") -> None:
+    """Record the legal basis for contacting an address. Never raises."""
+    email = (email or "").strip().lower()
+    if not email or basis not in CONSENT_BASES:
+        logger.warning("Refusing consent record: email=%r basis=%r", email, basis)
+        return
+    try:
+        with get_connection() as conn:
+            conn.execute(
+                """INSERT INTO consent_log (email, basis, source, note, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (email, basis, source, note, _now()),
+            )
+    except Exception as exc:
+        logger.warning("Consent log write failed: %s", exc)
+
+
+def get_consent_history(email: str) -> list[dict]:
+    """All consent records for an address, newest first."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT email, basis, source, note, created_at FROM consent_log
+               WHERE email = ? ORDER BY id DESC""",
+            ((email or "").strip().lower(),),
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def get_domains_for_career_scan(limit: int = 30, since_days: int = 90) -> list[dict]:

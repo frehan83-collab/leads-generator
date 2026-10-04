@@ -120,7 +120,13 @@ def send_email_direct(draft_id: int) -> dict:
     resend.api_key = api_key
 
     try:
-        email_html = _text_to_html(draft["body"])
+        from src.outreach.unsubscribe import (
+            unsubscribe_footer_text,
+            unsubscribe_headers,
+        )
+
+        body = draft["body"] + unsubscribe_footer_text(draft["prospect_email"])
+        email_html = _text_to_html(body)
 
         params = {
             "from": f"{settings.from_name} <{from_email}>",
@@ -128,6 +134,9 @@ def send_email_direct(draft_id: int) -> dict:
             "subject": draft["subject"],
             "html": email_html,
         }
+        headers = unsubscribe_headers(draft["prospect_email"])
+        if headers:
+            params["headers"] = headers
 
         result = _send_with_retry(params)
         resend_id = (

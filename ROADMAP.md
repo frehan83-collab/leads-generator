@@ -187,7 +187,16 @@ production-grade for unattended multi-user operation.
 - [x] Bulk delete everywhere: prospects (full cascade, suppressions survive),
   drafts (prospects kept); postings cascade now also clears events/LinkedIn/
   stages (was leaking orphans)
-- [x] Per-row checkboxes + select-all + floating action bar + confirm on all
-  three pages; shared `_bulk_js.html`; fixed prospects company-filter drop
+- [x] Per-row checkboxes, select-all, floating action bar with confirm,
+  shared bulk JS partial; fixed prospects company-filter drop
 - [x] Audit hooks on all bulk deletes
 - [x] 8 new tests; suite 247 → 257 green; ruff clean
+
+### World-class batch 10 — consent + unsubscribe + tracking-off
+- [x] `consent_log` ledger (validated basis values) + helpers
+- [x] One-click unsubscribe (signed tokens, GET confirm + POST honor,
+  auth-exempt, no-oracle responses); suppresses + logs on use
+- [x] Send-time List-Unsubscribe headers + appended footer (drafts stay clean)
+- [x] Follow-ups decoupled from opens (time-based; opener-without-reply now
+  correctly qualifies); tracking-off documented as dashboard setting
+- [x] 9 new tests; suite 257 → 266 green; ruff clean
