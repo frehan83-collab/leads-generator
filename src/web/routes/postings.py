@@ -16,6 +16,7 @@ from src.export.csv_exporter import (
     build_postings_xlsx,
     stream_postings_csv,
 )
+from src.web.auth import audit
 
 postings_bp = Blueprint("postings", __name__)
 
@@ -97,6 +98,12 @@ def delete_postings():
         return redirect(url_for("postings.postings"))
 
     deleted = db.delete_job_postings(posting_ids)
+    audit(
+        "postings.bulk_delete",
+        "job_posting",
+        "",
+        f"{deleted} postings: {posting_ids[:20]}",
+    )
     flash(
         f"Deleted {deleted} posting{'s' if deleted != 1 else ''} and related prospects/drafts.",
         "success",

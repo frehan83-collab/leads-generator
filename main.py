@@ -120,7 +120,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--sources",
         nargs="+",
-        choices=["finn", "nav", "karrierestart", "jobbnorge"],
+        choices=["finn", "nav", "karrierestart", "jobbnorge", "careers"],
         help="Sources to scrape (default: finn nav)",
     )
     parser.add_argument(

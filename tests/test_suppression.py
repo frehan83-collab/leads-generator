@@ -201,3 +201,39 @@ def test_resend_validation_error_no_retry(monkeypatch):
     result = email_sender.send_email_direct(draft_id)
     assert result["success"] is False
     assert len(calls) == 1
+
+
+# --- audit log ---------------------------------------------------------------
+
+
+def test_audit_roundtrip():
+    assert db_module.get_audit_log() == []
+    db_module.log_audit("boss", "draft.approve", "email_draft", 7, "a@acme.no")
+    rows = db_module.get_audit_log()
+    assert len(rows) == 1
+    assert rows[0]["actor"] == "boss"
+    assert rows[0]["action"] == "draft.approve"
+    assert rows[0]["entity_id"] == "7"
+
+
+def test_approve_route_writes_audit(monkeypatch):
+    import base64
+
+    draft_id, _ = _seed_draft(status="draft")
+    import src.web.app as app_module
+    from src.config import Settings
+
+    monkeypatch.setattr(
+        app_module, "settings", Settings(dashboard_user="u", dashboard_pass="p")
+    )
+    app = app_module.create_app()
+    app.config["TESTING"] = True
+    client = app.test_client()
+    creds = base64.b64encode(b"u:p").decode()
+    resp = client.post(
+        f"/campaigns/{draft_id}/approve",
+        headers={"Authorization": f"Basic {creds}"},
+    )
+    assert resp.status_code == 302
+    rows = db_module.get_audit_log()
+    assert any(r["action"] == "draft.approve" and r["actor"] == "u" for r in rows)

@@ -430,6 +430,30 @@ _SCHEMA = """
             );
             CREATE INDEX IF NOT EXISTS idx_suppressions_email
                 ON suppressions(email);
+
+            -- Lead scores v2 (per-domain, with component breakdown)
+            CREATE TABLE IF NOT EXISTS lead_scores (
+                domain          TEXT UNIQUE NOT NULL,
+                score           INTEGER NOT NULL DEFAULT 0,
+                level           TEXT NOT NULL DEFAULT 'cold',
+                components_json TEXT NOT NULL DEFAULT '{}',
+                computed_at     TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_lead_scores_score
+                ON lead_scores(score);
+
+            -- Audit log: who did what, when (dashboard + scheduler actions)
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                actor       TEXT NOT NULL DEFAULT 'dashboard',
+                action      TEXT NOT NULL,
+                entity      TEXT NOT NULL DEFAULT '',
+                entity_id   TEXT NOT NULL DEFAULT '',
+                detail      TEXT NOT NULL DEFAULT '',
+                created_at  TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_audit_log_created
+                ON audit_log(created_at);
         """
 
 
@@ -1553,6 +1577,91 @@ def get_suppressions() -> list[dict]:
     with get_connection() as conn:
         rows = conn.execute(
             "SELECT email, reason, created_at FROM suppressions ORDER BY created_at DESC"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+# ------------------------------------------------------------------
+# Lead scores v2
+# ------------------------------------------------------------------
+
+
+def upsert_lead_score(
+    domain: str, score: int, level: str, components_json: str
+) -> None:
+    """Insert or replace the v2 score for a company domain."""
+    with get_connection() as conn:
+        conn.execute(
+            """INSERT INTO lead_scores (domain, score, level, components_json, computed_at)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(domain) DO UPDATE SET
+                 score = excluded.score, level = excluded.level,
+                 components_json = excluded.components_json,
+                 computed_at = excluded.computed_at""",
+            (domain, score, level, components_json, _now()),
+        )
+
+
+def get_lead_scores(limit: int = 100, min_score: int = 0) -> list[dict]:
+    """Top-scoring domains with their component breakdowns."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT domain, score, level, components_json, computed_at
+               FROM lead_scores WHERE score >= ?
+               ORDER BY score DESC LIMIT ?""",
+            (min_score, limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+# ------------------------------------------------------------------
+# Audit log
+# ------------------------------------------------------------------
+
+
+def log_audit(
+    actor: str,
+    action: str,
+    entity: str = "",
+    entity_id: str | int = "",
+    detail: str = "",
+) -> None:
+    """Record who performed a mutating action. Never raises."""
+    try:
+        with get_connection() as conn:
+            conn.execute(
+                """INSERT INTO audit_log (actor, action, entity, entity_id, detail, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (actor or "dashboard", action, entity, str(entity_id), detail, _now()),
+            )
+    except Exception as exc:
+        logger.warning("Audit log write failed (%s %s): %s", action, entity_id, exc)
+
+
+def get_audit_log(limit: int = 100) -> list[dict]:
+    """Most recent audit entries, newest first."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT actor, action, entity, entity_id, detail, created_at
+               FROM audit_log ORDER BY id DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_domains_for_career_scan(limit: int = 30, since_days: int = 90) -> list[dict]:
+    """Company domains seen recently, for bounded career-page revisits."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT company_domain AS domain, MAX(company_name) AS company_name,
+                      MAX(scraped_at) AS last_seen
+               FROM job_postings
+               WHERE company_domain IS NOT NULL AND company_domain != ''
+                 AND scraped_at >= date('now', ?)
+               GROUP BY company_domain
+               ORDER BY last_seen DESC
+               LIMIT ?""",
+            (f"-{since_days} days", limit),
         ).fetchall()
     return [dict(r) for r in rows]
 

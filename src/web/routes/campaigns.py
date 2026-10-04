@@ -10,6 +10,7 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 from src.database import db
 from src.emails.drafter import regenerate_draft
 from src.emails.templates import TEMPLATES
+from src.web.auth import audit
 
 campaigns_bp = Blueprint("campaigns", __name__)
 logger = logging.getLogger(__name__)
@@ -89,6 +90,7 @@ def approve(draft_id):
             "approved_at": datetime.now(UTC).replace(tzinfo=None).isoformat(),
         },
     )
+    audit("draft.approve", "email_draft", draft_id, draft.get("prospect_email", ""))
     flash(f"Draft approved for {draft.get('prospect_email', '')}", "success")
     return redirect(request.referrer or url_for("campaigns.campaigns"))
 
@@ -143,6 +145,7 @@ def send_all_approved():
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()
+    audit("drafts.bulk_send_snov", "email_draft", "", "all approved")
     flash("Sending all approved drafts to Snov.io...", "success")
     return redirect(url_for("campaigns.campaigns", status="approved"))
 
@@ -192,6 +195,7 @@ def send_single(draft_id):
                 }
             )
             flash(f"Sent to Snov.io: {draft['prospect_email']}", "success")
+            audit("draft.send_snov", "email_draft", draft_id, draft["prospect_email"])
         else:
             flash(f"Snov.io did not accept {draft['prospect_email']}.", "error")
     except Exception as exc:
@@ -212,6 +216,7 @@ def send_email_single(draft_id):
 
     result = send_email_direct(draft_id)
     if result["success"]:
+        audit("draft.send_resend", "email_draft", draft_id, result.get("resend_id", ""))
         flash(
             f"Email sent directly to prospect (Resend ID: {result.get('resend_id', 'ok')})",
             "success",
@@ -246,6 +251,7 @@ def email_all_approved():
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()
+    audit("drafts.bulk_send_resend", "email_draft", "", "all approved")
     flash("Sending all approved drafts via email (Resend)...", "success")
     return redirect(url_for("campaigns.campaigns", status="approved"))
 

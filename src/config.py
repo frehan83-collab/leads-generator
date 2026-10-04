@@ -48,6 +48,8 @@ class Settings:
     pipeline_workers: int = max(1, int(os.getenv("PIPELINE_WORKERS", "1")))
     # Max seconds spent on a single company domain (website + enrichment).
     domain_timeout_sec: int = int(os.getenv("DOMAIN_TIMEOUT_SEC", "300"))
+    # Cap on company domains revisited per run by the careers source.
+    careers_max_domains: int = int(os.getenv("CAREERS_MAX_DOMAINS", "30"))
 
     # -- Snov.io --------------------------------------------------------
     snov_client_id: str | None = os.getenv("SNOV_CLIENT_ID")

@@ -128,6 +128,20 @@ class LeadPipeline:
             # Step 3: Calculate intent scores for companies with new postings
             self._calculate_intent_scores()
 
+            # Step 3b: Lead scores v2 (fit + demand + engagement)
+            try:
+                from src.scoring.lead_scorer import score_all_domains
+
+                score_stats = score_all_domains()
+                logger.info(
+                    "Lead scoring v2: %d domains (%d hot, %d warm)",
+                    score_stats["scored"],
+                    score_stats["hot"],
+                    score_stats["warm"],
+                )
+            except Exception as exc:
+                logger.warning("Lead scoring v2 failed: %s", exc)
+
             # Step 4: Auto-export CSV
             csv_path = auto_export_after_run()
             if csv_path:
@@ -386,6 +400,22 @@ class LeadPipeline:
                     for posting in scrape_jobbnorge(
                         keywords, known_ids=known_ids, browser=browser
                     ):
+                        if posting["url"] not in seen_ids:
+                            seen_ids.add(posting["url"])
+                            all_postings.append(posting)
+                            source_count += 1
+
+                elif source == "careers":
+                    # Bounded revisit of known companies' own career pages
+                    # (no keywords, no unbounded crawl — DB domains only).
+                    from src.config import settings as _career_settings
+                    from src.scraper.careers_scraper import scrape_career_pages
+
+                    targets = db.get_domains_for_career_scan(
+                        limit=_career_settings.careers_max_domains
+                    )
+                    logger.info("Career scan: %d known domains", len(targets))
+                    for posting in scrape_career_pages(targets, known_ids=known_ids):
                         if posting["url"] not in seen_ids:
                             seen_ids.add(posting["url"])
                             all_postings.append(posting)

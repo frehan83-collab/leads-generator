@@ -9,7 +9,7 @@ humans, driven by a daily autonomous pipeline.
 
 | Stage | How |
 |---|---|
-| **Discover** | Playwright scrapers for Finn.no, NAV, Karrierestart, Jobbnorge (incremental, deduped) |
+| **Discover** | Playwright scrapers for Finn.no, NAV, Karrierestart, Jobbnorge + company career pages (incremental, deduped) |
 | **Enrich** | BRREG company data (org number, employees, NACE) + website contact extraction |
 | **Prospect** | Snov.io domain prospects, email finder, verification (valid/invalid/risky) |
 | **Draft** | Template + Claude Haiku AI-personalized openers with A/B variants |
@@ -32,7 +32,7 @@ python main.py                          # dashboard at http://127.0.0.1:5000
 ```bash
 python main.py                      # web dashboard + daily scheduler (default)
 python main.py --now                 # one pipeline run now, then exit
-python main.py --now --sources finn  # specific source(s): finn nav karrierestart jobbnorge
+python main.py --now --sources finn  # specific source(s): finn nav karrierestart jobbnorge careers
 python main.py --status              # DB stats + Snov.io balance
 python main.py --cli                 # terminal scheduler, no web UI
 python main.py --host 0.0.0.0 --port 8080
@@ -46,6 +46,7 @@ python main.py --host 0.0.0.0 --port 8080
 | `RUN_TIME` / `SEND_TIME` | `09:30` / `08:30` UTC | daily pipeline / send-job times |
 | `PIPELINE_WORKERS` | `1` | parallel posting workers (`2`–`4` with Snov credits) |
 | `DOMAIN_TIMEOUT_SEC` | `300` | max seconds per company domain |
+| `CAREERS_MAX_DOMAINS` | `30` | known domains revisited per run by the careers source |
 | `SNOV_MIN_CREDITS` | `0` | abort run below this balance (`0` = only when empty) |
 | `SNOV_LOW_WATER_CREDITS` | `200` | warn (+ webhook) when balance drops below this |
 | `SNOV_CLIENT_ID` / `SNOV_CLIENT_SECRET` | — | enrichment (required for prospects) |

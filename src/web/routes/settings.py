@@ -7,6 +7,7 @@ import threading
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 
 from src.database import db
+from src.web.auth import audit
 
 settings_bp = Blueprint("settings", __name__)
 logger = logging.getLogger(__name__)
@@ -87,6 +88,7 @@ def add_keyword():
                 added.append(kw)
 
     if added:
+        audit("keywords.add", "keyword", "", ", ".join(added))
         flash(
             f"Added keyword{'s' if len(added) > 1 else ''}: {', '.join(added)}",
             "success",
@@ -101,6 +103,7 @@ def add_keyword():
 def remove_keyword(keyword_id):
     removed = db.remove_keyword(keyword_id)
     if removed:
+        audit("keywords.remove", "keyword", keyword_id, "")
         flash("Keyword removed.", "success")
     else:
         flash("Keyword not found.", "warning")

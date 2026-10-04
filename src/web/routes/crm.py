@@ -5,6 +5,7 @@ import logging
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from src.database import db
+from src.web.auth import audit
 
 crm_bp = Blueprint("crm", __name__)
 logger = logging.getLogger(__name__)
@@ -41,6 +42,7 @@ def move_prospect():
 
     notes = request.form.get("notes", "").strip() or "Manual move"
     db.set_prospect_stage(prospect_id, stage, notes)
+    audit("prospect.stage_move", "prospect", prospect_id, f"-> {stage}: {notes[:120]}")
 
     logger.info("Moved prospect %d to stage '%s'", prospect_id, stage)
 

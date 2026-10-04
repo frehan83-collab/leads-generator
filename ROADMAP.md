@@ -81,6 +81,14 @@ production-grade for unattended multi-user operation.
   when multi-user concurrency is actually needed
 
 ### P3 — Growth
-- [ ] Additional sources (LinkedIn jobs via API partners, company career pages)
-- [ ] Lead scoring v2 (firmographic fit + engagement signals, calibrated on won/lost)
-- [ ] Multi-user roles, audit log, per-seat Snov budgets
+- [x] Additional source: company career pages (`careers` source — bounded
+  revisits of known domains, robots honored, same-domain links only,
+  stable URL-hash IDs, 5 tests)
+- [x] Lead scoring v2 (`src/scoring/`: fit 40 + demand 35 + engagement 25,
+  explainable components, `lead_scores` table, pipeline hook,
+  win-rate calibration report; 7 tests)
+- [x] Audit log (`audit_log` table, actor from dashboard auth, hooks on
+  approve/send/bulk-send/delete/stage-move/keyword changes; 2 tests)
+- [ ] Multi-user roles, per-seat Snov budgets — **deferred deliberately**:
+  needs session auth + tenant model; current basic-auth + audit log is the
+  correct foundation, not a substitute. Build when a second operator exists.
