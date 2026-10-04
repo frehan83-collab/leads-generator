@@ -68,12 +68,19 @@ class BrowserManager:
         }
         defaults.update(kwargs)
         ctx = self._browser.new_context(**defaults)
-        # Apply stealth if available
+        # Apply stealth evasions if available (playwright-stealth 2.x API,
+        # with fallback to the legacy 1.x function).
         try:
-            from playwright_stealth import stealth_sync
-            stealth_sync(ctx)
+            from playwright_stealth import Stealth
+            Stealth().apply_stealth_sync(ctx)
+            logger.debug("Stealth evasions applied to browser context")
         except ImportError:
-            pass
+            try:
+                from playwright_stealth import stealth_sync
+                stealth_sync(ctx)
+                logger.debug("Stealth evasions applied (legacy API)")
+            except ImportError:
+                logger.debug("playwright_stealth not installed — scraping without evasions")
         return ctx
 
     @property
