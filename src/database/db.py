@@ -22,39 +22,103 @@ def get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
     return conn
+
+
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    """Return the set of column names for a table (empty set if missing)."""
+    return {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
+def _like_escape(value: str) -> str:
+    """Escape LIKE wildcards in user search input (backslash is the escape char)."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _like_contains(value: str) -> str:
+    """Wrap escaped user input for a LIKE %...% match with explicit ESCAPE."""
+    return f"%{_like_escape(value)}%"
+
+
+# (table, column, ddl) — applied only when the table exists and lacks the column.
+_MIGRATIONS: list[tuple[str, str, str]] = [
+    # v2: add source + external_id + org_number to job_postings
+    ("job_postings", "source", "ALTER TABLE job_postings ADD COLUMN source TEXT DEFAULT 'finn'"),
+    ("job_postings", "external_id", "ALTER TABLE job_postings ADD COLUMN external_id TEXT"),
+    ("job_postings", "org_number", "ALTER TABLE job_postings ADD COLUMN org_number TEXT"),
+    # v4: Resend webhook tracking (F1)
+    ("email_drafts", "resend_id", "ALTER TABLE email_drafts ADD COLUMN resend_id TEXT"),
+    ("email_drafts", "open_count", "ALTER TABLE email_drafts ADD COLUMN open_count INTEGER DEFAULT 0"),
+    ("email_drafts", "click_count", "ALTER TABLE email_drafts ADD COLUMN click_count INTEGER DEFAULT 0"),
+    # v5: Follow-up sequences (F3)
+    ("email_drafts", "sequence_step", "ALTER TABLE email_drafts ADD COLUMN sequence_step INTEGER DEFAULT 1"),
+    ("email_drafts", "parent_draft_id", "ALTER TABLE email_drafts ADD COLUMN parent_draft_id INTEGER REFERENCES email_drafts(id)"),
+    # v6: AI variants (F5)
+    ("email_drafts", "variant_of", "ALTER TABLE email_drafts ADD COLUMN variant_of INTEGER REFERENCES email_drafts(id)"),
+    ("email_drafts", "ai_context", "ALTER TABLE email_drafts ADD COLUMN ai_context TEXT"),
+    # v7: Intent signals (C3)
+    ("companies", "intent_score", "ALTER TABLE companies ADD COLUMN intent_score INTEGER DEFAULT 0"),
+    ("companies", "intent_signals", "ALTER TABLE companies ADD COLUMN intent_signals TEXT"),
+    # v8: Smart scheduler (C5)
+    ("email_drafts", "scheduled_for", "ALTER TABLE email_drafts ADD COLUMN scheduled_for TEXT"),
+]
+
+# Columns callers are allowed to update dynamically (SQL-injection guard).
+_UPDATABLE_COLUMNS: dict[str, frozenset[str]] = {
+    "email_drafts": frozenset({
+        "template_name", "subject", "body", "status", "approved_at",
+        "sent_at", "opened_at", "replied_at", "notes", "resend_id",
+        "open_count", "click_count", "sequence_step", "parent_draft_id",
+        "variant_of", "ai_context", "scheduled_for", "prospect_id",
+        "job_posting_id",
+    }),
+    "pipeline_runs": frozenset({
+        "finished_at", "status", "postings_scraped", "postings_new",
+        "domains_resolved", "prospects_found", "emails_found",
+        "emails_verified", "prospects_added", "drafts_created",
+        "csv_path", "errors", "error_message",
+    }),
+    "linkedin_messages": frozenset({
+        "message_type", "message_text", "status", "copied_at",
+        "sent_at", "replied_at", "notes", "prospect_id", "draft_id",
+    }),
+}
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
     """
     Apply incremental migrations to existing databases.
-    Each ALTER TABLE is wrapped so it's safe to run multiple times.
+    Each migration runs only when its table exists and lacks the column,
+    so this is safe to run on every startup. Unexpected errors are logged
+    loudly instead of being swallowed.
     """
-    migrations = [
-        # v2: add source + external_id + org_number to job_postings
-        "ALTER TABLE job_postings ADD COLUMN source TEXT DEFAULT 'finn'",
-        "ALTER TABLE job_postings ADD COLUMN external_id TEXT",
-        "ALTER TABLE job_postings ADD COLUMN org_number TEXT",
-        # v2: back-fill external_id from finn_id where blank
-        "UPDATE job_postings SET external_id = finn_id WHERE external_id IS NULL AND finn_id IS NOT NULL",
-        # v3: ERA Group PDF extraction tables
-        "ALTER TABLE era_pdf_uploads ADD COLUMN status TEXT DEFAULT 'pending'",
-        "ALTER TABLE era_pdf_uploads ADD COLUMN error_message TEXT",
-    ]
-    for sql in migrations:
+    for table, column, ddl in _MIGRATIONS:
+        cols = _table_columns(conn, table)
+        if not cols:
+            continue  # fresh DB: base schema (run next) already has it
+        if column in cols:
+            continue
         try:
-            conn.execute(sql)
+            conn.execute(ddl)
+            logger.info("Migration applied: %s.%s", table, column)
         except Exception:
-            pass  # column already exists or table doesn't have finn_id — skip
+            logger.exception("Migration FAILED: %s", ddl)
+            raise
+
+    # v2 back-fill: external_id from legacy finn_id where blank
+    cols = _table_columns(conn, "job_postings")
+    if cols and "external_id" in cols and "finn_id" in cols:
+        conn.execute(
+            "UPDATE job_postings SET external_id = finn_id "
+            "WHERE external_id IS NULL AND finn_id IS NOT NULL"
+        )
 
 
-def init_db() -> None:
-    """Create all tables if they don't exist."""
-    with get_connection() as conn:
-        # Run schema migrations first so new indexes don't fail
-        _migrate(conn)
-
-        conn.executescript("""
+# Full DDL. CREATE TABLE statements must execute before _migrate(),
+# and CREATE INDEX statements (several reference migrated columns) last.
+# See init_db() which enforces that order via _split_schema().
+_SCHEMA = """
             CREATE TABLE IF NOT EXISTS job_postings (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
                 source          TEXT DEFAULT 'finn',
@@ -195,57 +259,6 @@ def init_db() -> None:
                 created_at  TEXT NOT NULL
             );
 
-            CREATE TABLE IF NOT EXISTS era_pdf_uploads (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                filename        TEXT NOT NULL,
-                file_size       INTEGER,
-                upload_date     TEXT NOT NULL,
-                status          TEXT DEFAULT 'pending',
-                error_message   TEXT,
-                processing_time INTEGER,
-                UNIQUE(filename, upload_date)
-            );
-
-            CREATE TABLE IF NOT EXISTS era_extractions (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                pdf_id          INTEGER NOT NULL REFERENCES era_pdf_uploads(id),
-                extraction_type TEXT NOT NULL,
-                extracted_data  TEXT NOT NULL,
-                confidence_score REAL DEFAULT 0.0,
-                extraction_date TEXT NOT NULL,
-                page_number     INTEGER,
-                field_count     INTEGER DEFAULT 0
-            );
-
-            CREATE TABLE IF NOT EXISTS era_extraction_templates (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                template_name   TEXT UNIQUE NOT NULL,
-                pattern_type    TEXT NOT NULL,
-                field_mapping   TEXT,
-                created_date    TEXT NOT NULL,
-                updated_date    TEXT,
-                active          INTEGER DEFAULT 1
-            );
-
-            CREATE TABLE IF NOT EXISTS era_corrections (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                extraction_id   INTEGER NOT NULL REFERENCES era_extractions(id),
-                field_name      TEXT NOT NULL,
-                original_value  TEXT,
-                corrected_value TEXT NOT NULL,
-                correction_date TEXT NOT NULL,
-                used_for_training INTEGER DEFAULT 0
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_era_uploads_status
-                ON era_pdf_uploads(status);
-            CREATE INDEX IF NOT EXISTS idx_era_extractions_pdf
-                ON era_extractions(pdf_id);
-            CREATE INDEX IF NOT EXISTS idx_era_extractions_type
-                ON era_extractions(extraction_type);
-            CREATE INDEX IF NOT EXISTS idx_era_corrections_extraction
-                ON era_corrections(extraction_id);
-
             CREATE TABLE IF NOT EXISTS website_cache (
                 domain      TEXT UNIQUE NOT NULL,
                 contacts_json TEXT NOT NULL,
@@ -253,7 +266,93 @@ def init_db() -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_website_cache_domain
                 ON website_cache(domain);
-        """)
+
+            -- F1: Resend webhook email event tracking
+            CREATE TABLE IF NOT EXISTS email_events (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                draft_id    INTEGER REFERENCES email_drafts(id),
+                resend_id   TEXT,
+                event_type  TEXT NOT NULL,
+                payload     TEXT,
+                created_at  TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_email_events_draft
+                ON email_events(draft_id);
+            CREATE INDEX IF NOT EXISTS idx_email_events_resend
+                ON email_events(resend_id);
+            CREATE INDEX IF NOT EXISTS idx_email_events_type
+                ON email_events(event_type);
+
+            -- F4: LinkedIn outreach messages
+            CREATE TABLE IF NOT EXISTS linkedin_messages (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                prospect_id     INTEGER NOT NULL REFERENCES prospects(id),
+                draft_id        INTEGER REFERENCES email_drafts(id),
+                message_type    TEXT NOT NULL DEFAULT 'connection_request',
+                message_text    TEXT NOT NULL,
+                status          TEXT NOT NULL DEFAULT 'pending',
+                created_at      TEXT NOT NULL,
+                copied_at       TEXT,
+                sent_at         TEXT,
+                replied_at      TEXT,
+                notes           TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_linkedin_messages_prospect
+                ON linkedin_messages(prospect_id);
+            CREATE INDEX IF NOT EXISTS idx_linkedin_messages_draft
+                ON linkedin_messages(draft_id);
+            CREATE INDEX IF NOT EXISTS idx_linkedin_messages_status
+                ON linkedin_messages(status);
+
+            -- F3+F5: additional indexes for sequences and variants
+            CREATE INDEX IF NOT EXISTS idx_email_drafts_parent
+                ON email_drafts(parent_draft_id);
+            CREATE INDEX IF NOT EXISTS idx_email_drafts_resend
+                ON email_drafts(resend_id);
+
+            -- C2: CRM Pipeline stages
+            CREATE TABLE IF NOT EXISTS prospect_stages (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                prospect_id     INTEGER NOT NULL REFERENCES prospects(id),
+                stage           TEXT NOT NULL DEFAULT 'New',
+                moved_at        TEXT NOT NULL,
+                notes           TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_prospect_stages_prospect
+                ON prospect_stages(prospect_id);
+            CREATE INDEX IF NOT EXISTS idx_prospect_stages_stage
+                ON prospect_stages(stage);
+        """
+
+
+def _split_schema() -> tuple[list[str], list[str]]:
+    """Split _SCHEMA into (create_tables, create_indexes) statement lists."""
+    tables: list[str] = []
+    indexes: list[str] = []
+    for chunk in _SCHEMA.split(";"):
+        lines = [ln for ln in chunk.splitlines() if not ln.strip().startswith("--")]
+        stmt = "\n".join(lines).strip()
+        if not stmt:
+            continue
+        upper = stmt.upper()
+        if upper.startswith("CREATE TABLE"):
+            tables.append(stmt)
+        elif upper.startswith("CREATE INDEX"):
+            indexes.append(stmt)
+        else:
+            raise ValueError(f"Unexpected statement in _SCHEMA: {stmt[:60]!r}")
+    return tables, indexes
+
+
+def init_db() -> None:
+    """Create base tables, apply migrations, then create indexes."""
+    tables, indexes = _split_schema()
+    with get_connection() as conn:
+        for stmt in tables:
+            conn.execute(stmt)
+        _migrate(conn)
+        for stmt in indexes:
+            conn.execute(stmt)
     logger.info("Database initialised at %s", DB_PATH)
 
 
@@ -318,8 +417,8 @@ def get_job_postings(
     params = []
 
     if search:
-        conditions.append("(title LIKE ? OR company_name LIKE ? OR location LIKE ?)")
-        params.extend([f"%{search}%"] * 3)
+        conditions.append("(title LIKE ? ESCAPE '\\' OR company_name LIKE ? ESCAPE '\\' OR location LIKE ? ESCAPE '\\')")
+        params.extend([_like_contains(search)] * 3)
     if keyword:
         conditions.append("keyword_matched = ?")
         params.append(keyword)
@@ -428,15 +527,15 @@ def get_prospects_filtered(
 
     if search:
         conditions.append(
-            "(full_name LIKE ? OR email LIKE ? OR company_name LIKE ? OR position LIKE ?)"
+            "(full_name LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\' OR company_name LIKE ? ESCAPE '\\' OR position LIKE ? ESCAPE '\\')"
         )
-        params.extend([f"%{search}%"] * 4)
+        params.extend([_like_contains(search)] * 4)
     if email_status:
         conditions.append("email_status = ?")
         params.append(email_status)
     if company:
-        conditions.append("company_name LIKE ?")
-        params.append(f"%{company}%")
+        conditions.append("company_name LIKE ? ESCAPE '\\'")
+        params.append(_like_contains(company))
 
     where = "WHERE " + " AND ".join(conditions) if conditions else ""
 
@@ -556,11 +655,22 @@ def get_email_drafts(
     return [dict(r) for r in rows], total
 
 
+def get_draft_status_counts() -> dict:
+    """Return {status: count} for all email drafts in a single query."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT COALESCE(status, 'draft') as status, COUNT(*) as cnt FROM email_drafts GROUP BY status"
+        ).fetchall()
+    return {r["status"]: r["cnt"] for r in rows}
+
+
 def get_email_draft_by_id(draft_id: int) -> Optional[dict]:
     with get_connection() as conn:
         row = conn.execute(
             """SELECT ed.*,
                       p.full_name as prospect_name, p.email as prospect_email,
+                      p.first_name, p.last_name,
+                      p.position as prospect_title,
                       p.company_name, p.company_domain,
                       jp.title as job_title, jp.location as job_location, jp.url as job_url
                FROM email_drafts ed
@@ -573,7 +683,10 @@ def get_email_draft_by_id(draft_id: int) -> Optional[dict]:
 
 
 def update_email_draft(draft_id: int, data: dict) -> None:
-    """Update fields on an email draft."""
+    """Update fields on an email draft. Keys must be in the allowlist."""
+    unknown = set(data) - _UPDATABLE_COLUMNS["email_drafts"]
+    if unknown:
+        raise ValueError(f"Cannot update email_drafts columns: {sorted(unknown)}")
     sets = []
     params = []
     for key, val in data.items():
@@ -595,6 +708,24 @@ def draft_exists_for_prospect(prospect_id: int) -> bool:
         return row is not None
 
 
+def get_approved_drafts_with_prospects() -> list[dict]:
+    """Return all approved drafts with prospect data needed for Snov enrollment."""
+    with get_connection() as conn:
+        rows = conn.execute("""
+            SELECT ed.id, ed.prospect_id, ed.subject, ed.body,
+                   p.email as prospect_email,
+                   p.first_name, p.last_name,
+                   p.full_name as prospect_name,
+                   p.position as prospect_title,
+                   p.company_name, p.company_domain
+            FROM email_drafts ed
+            JOIN prospects p ON ed.prospect_id = p.id
+            WHERE ed.status = 'approved'
+            ORDER BY ed.approved_at ASC
+        """).fetchall()
+    return [dict(r) for r in rows]
+
+
 # ------------------------------------------------------------------
 # Pipeline runs
 # ------------------------------------------------------------------
@@ -612,6 +743,10 @@ def insert_pipeline_run(data: dict = None) -> int:
 
 
 def update_pipeline_run(run_id: int, data: dict) -> None:
+    """Update fields on a pipeline run. Keys must be in the allowlist."""
+    unknown = set(data) - _UPDATABLE_COLUMNS["pipeline_runs"]
+    if unknown:
+        raise ValueError(f"Cannot update pipeline_runs columns: {sorted(unknown)}")
     sets = []
     params = []
     for key, val in data.items():
@@ -764,6 +899,58 @@ def get_job_posting_by_id(posting_id: int) -> Optional[dict]:
             "SELECT * FROM job_postings WHERE id = ?", (posting_id,)
         ).fetchone()
         return dict(row) if row else None
+
+
+def delete_job_postings(posting_ids: list[int]) -> int:
+    """Delete job postings and their linked prospects, drafts, outreach logs.
+
+    Returns the number of postings deleted.
+    """
+    if not posting_ids:
+        return 0
+    placeholders = ",".join("?" for _ in posting_ids)
+    with get_connection() as conn:
+        # Get prospect IDs linked to these postings (for cascade)
+        prospect_rows = conn.execute(
+            f"SELECT id FROM prospects WHERE job_posting_id IN ({placeholders})",
+            posting_ids,
+        ).fetchall()
+        prospect_ids = [r["id"] for r in prospect_rows]
+
+        if prospect_ids:
+            p_placeholders = ",".join("?" for _ in prospect_ids)
+            # Delete outreach logs for those prospects
+            conn.execute(
+                f"DELETE FROM outreach_log WHERE prospect_id IN ({p_placeholders})",
+                prospect_ids,
+            )
+            # Delete email drafts for those prospects
+            conn.execute(
+                f"DELETE FROM email_drafts WHERE prospect_id IN ({p_placeholders})",
+                prospect_ids,
+            )
+            # Delete the prospects themselves
+            conn.execute(
+                f"DELETE FROM prospects WHERE id IN ({p_placeholders})",
+                prospect_ids,
+            )
+
+        # Also delete any email drafts linked directly to posting
+        conn.execute(
+            f"DELETE FROM email_drafts WHERE job_posting_id IN ({placeholders})",
+            posting_ids,
+        )
+
+        # Delete the postings
+        cur = conn.execute(
+            f"DELETE FROM job_postings WHERE id IN ({placeholders})",
+            posting_ids,
+        )
+        deleted = cur.rowcount
+        logger.info(
+            "Deleted %d postings, %d prospects cascaded", deleted, len(prospect_ids)
+        )
+        return deleted
 
 
 # ------------------------------------------------------------------
@@ -993,127 +1180,613 @@ def seed_keywords_from_env(env_keywords: list[str]) -> int:
 
 
 # ------------------------------------------------------------------
-# ERA Group PDF Extraction
+# Email Events (F1 — Resend webhook tracking)
 # ------------------------------------------------------------------
 
-def insert_pdf_upload(filename: str, file_size: int, status: str = "pending") -> Optional[int]:
-    """Insert a new PDF upload record. Returns upload_id or None if duplicate."""
+def insert_email_event(data: dict) -> Optional[int]:
+    """Insert a Resend webhook event. Returns event id."""
     sql = """
-        INSERT OR IGNORE INTO era_pdf_uploads (filename, file_size, upload_date, status)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO email_events (draft_id, resend_id, event_type, payload, created_at)
+        VALUES (:draft_id, :resend_id, :event_type, :payload, :created_at)
     """
+    data.setdefault("created_at", _now())
     with get_connection() as conn:
-        cur = conn.execute(sql, (filename, file_size, _now(), status))
-        if cur.lastrowid and cur.rowcount:
-            logger.info("Inserted PDF upload: %s (size=%d bytes)", filename, file_size)
-            return cur.lastrowid
-    return None
+        cur = conn.execute(sql, data)
+        return cur.lastrowid if cur.lastrowid else None
 
 
-def update_pdf_status(pdf_id: int, status: str, error_message: str = None, processing_time: int = None) -> bool:
-    """Update PDF upload status. Returns True if updated."""
-    sql = """
-        UPDATE era_pdf_uploads
-        SET status = ?, error_message = ?, processing_time = ?
-        WHERE id = ?
-    """
+def get_email_events_by_draft(draft_id: int) -> list[dict]:
+    """Get all email events for a specific draft, newest first."""
     with get_connection() as conn:
-        cur = conn.execute(sql, (status, error_message, processing_time, pdf_id))
-        updated = cur.rowcount > 0
-        if updated:
-            logger.info("Updated PDF %d status to %s", pdf_id, status)
-        return updated
+        rows = conn.execute(
+            "SELECT * FROM email_events WHERE draft_id = ? ORDER BY created_at DESC",
+            (draft_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
-def insert_extraction(pdf_id: int, extraction_type: str, extracted_data: str, confidence_score: float = 0.0, page_number: int = None, field_count: int = 0) -> Optional[int]:
-    """Insert extracted data. Returns extraction_id or None."""
-    sql = """
-        INSERT INTO era_extractions (pdf_id, extraction_type, extracted_data, confidence_score, extraction_date, page_number, field_count)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """
+def get_email_events_by_resend_id(resend_id: str) -> list[dict]:
+    """Get all events for a specific Resend email ID."""
     with get_connection() as conn:
-        cur = conn.execute(sql, (pdf_id, extraction_type, extracted_data, confidence_score, _now(), page_number, field_count))
-        if cur.lastrowid:
-            logger.info("Inserted extraction id=%d from PDF id=%d", cur.lastrowid, pdf_id)
-            return cur.lastrowid
-    return None
+        rows = conn.execute(
+            "SELECT * FROM email_events WHERE resend_id = ? ORDER BY created_at DESC",
+            (resend_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
-def get_era_dashboard_stats() -> dict:
-    """Get ERA Group dashboard statistics."""
+def get_draft_id_by_resend_id(resend_id: str) -> Optional[int]:
+    """Look up draft_id from a Resend email ID."""
     with get_connection() as conn:
-        # Count uploads by status
-        uploads = conn.execute("SELECT COUNT(*) as total FROM era_pdf_uploads").fetchone()
-        completed = conn.execute("SELECT COUNT(*) as total FROM era_pdf_uploads WHERE status = 'completed'").fetchone()
-        processing = conn.execute("SELECT COUNT(*) as total FROM era_pdf_uploads WHERE status = 'pending' OR status = 'processing'").fetchone()
-        failed = conn.execute("SELECT COUNT(*) as total FROM era_pdf_uploads WHERE status = 'error'").fetchone()
+        row = conn.execute(
+            "SELECT id FROM email_drafts WHERE resend_id = ?", (resend_id,)
+        ).fetchone()
+        return row["id"] if row else None
 
-        # Count extractions
-        extractions = conn.execute("SELECT COUNT(*) as total FROM era_extractions").fetchone()
 
-        # Average confidence
-        avg_confidence = conn.execute("SELECT AVG(confidence_score) as avg FROM era_extractions").fetchone()
+def get_outreach_stats() -> dict:
+    """Get aggregate outreach engagement stats."""
+    with get_connection() as conn:
+        total_sent = conn.execute(
+            "SELECT COUNT(*) FROM email_drafts WHERE status = 'sent'"
+        ).fetchone()[0]
+        total_opened = conn.execute(
+            "SELECT COUNT(DISTINCT draft_id) FROM email_events WHERE event_type = 'opened'"
+        ).fetchone()[0]
+        total_clicked = conn.execute(
+            "SELECT COUNT(DISTINCT draft_id) FROM email_events WHERE event_type = 'clicked'"
+        ).fetchone()[0]
+        total_bounced = conn.execute(
+            "SELECT COUNT(DISTINCT draft_id) FROM email_events WHERE event_type = 'bounced'"
+        ).fetchone()[0]
+        total_delivered = conn.execute(
+            "SELECT COUNT(DISTINCT draft_id) FROM email_events WHERE event_type = 'delivered'"
+        ).fetchone()[0]
 
-        # Avg processing time
-        avg_time = conn.execute("SELECT AVG(processing_time) as avg FROM era_pdf_uploads WHERE processing_time IS NOT NULL").fetchone()
+    open_rate = (total_opened / total_sent * 100) if total_sent > 0 else 0.0
+    click_rate = (total_clicked / total_sent * 100) if total_sent > 0 else 0.0
+    bounce_rate = (total_bounced / total_sent * 100) if total_sent > 0 else 0.0
 
     return {
-        "total_uploads": uploads[0] if uploads else 0,
-        "completed_uploads": completed[0] if completed else 0,
-        "processing_uploads": processing[0] if processing else 0,
-        "failed_uploads": failed[0] if failed else 0,
-        "total_extractions": extractions[0] if extractions else 0,
-        "avg_confidence": round((avg_confidence[0] or 0) * 100, 1),
-        "avg_processing_time": round(avg_time[0] or 0, 1),
+        "total_sent": total_sent,
+        "total_delivered": total_delivered,
+        "total_opened": total_opened,
+        "total_clicked": total_clicked,
+        "total_bounced": total_bounced,
+        "open_rate": round(open_rate, 1),
+        "click_rate": round(click_rate, 1),
+        "bounce_rate": round(bounce_rate, 1),
     }
 
 
-def get_all_extractions_for_export() -> list[dict]:
-    """Get all extractions for CSV/Excel export."""
+def get_engagement_timeline(days: int = 30) -> list[dict]:
+    """Daily email engagement data (sends, opens, clicks) over last N days."""
     with get_connection() as conn:
-        rows = conn.execute("""
-            SELECT
-                ee.id,
-                eu.filename,
-                eu.upload_date,
-                ee.extraction_type,
-                ee.extracted_data,
-                ee.confidence_score,
-                ee.extraction_date,
-                ee.page_number,
-                ee.field_count
-            FROM era_extractions ee
-            LEFT JOIN era_pdf_uploads eu ON ee.pdf_id = eu.id
-            ORDER BY ee.extraction_date DESC
-        """).fetchall()
-    return [dict(row) for row in rows]
+        rows = conn.execute(
+            """SELECT
+                DATE(created_at) as day,
+                SUM(CASE WHEN event_type = 'delivered' THEN 1 ELSE 0 END) as delivered,
+                SUM(CASE WHEN event_type = 'opened' THEN 1 ELSE 0 END) as opened,
+                SUM(CASE WHEN event_type = 'clicked' THEN 1 ELSE 0 END) as clicked
+            FROM email_events
+            WHERE created_at >= DATE('now', ?)
+            GROUP BY DATE(created_at)
+            ORDER BY day""",
+            (f"-{days} days",),
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
-def get_pdf_uploads(status: str = None, limit: int = 50) -> list[dict]:
-    """Get PDF uploads, optionally filtered by status."""
-    query = "SELECT * FROM era_pdf_uploads"
-    params = []
-    if status:
-        query += " WHERE status = ?"
-        params.append(status)
-    query += " ORDER BY upload_date DESC LIMIT ?"
-    params.append(limit)
+# ------------------------------------------------------------------
+# Follow-up Sequences (F3)
+# ------------------------------------------------------------------
 
-    with get_connection() as conn:
-        rows = conn.execute(query, params).fetchall()
-    return [dict(row) for row in rows]
+def get_sent_drafts_needing_followup(min_days: int = 3, max_step: int = 3) -> list[dict]:
+    """Get drafts sent via Resend that had no open event and need a follow-up.
 
-
-def log_correction(extraction_id: int, field_name: str, original_value: str, corrected_value: str) -> Optional[int]:
-    """Log a user correction for model training. Returns correction_id."""
-    sql = """
-        INSERT INTO era_corrections (extraction_id, field_name, original_value, corrected_value, correction_date)
-        VALUES (?, ?, ?, ?, ?)
+    Returns drafts where:
+    - status = 'sent'
+    - resend_id IS NOT NULL (sent via Resend)
+    - sent_at >= min_days ago
+    - sequence_step < max_step
+    - no 'opened' event exists for this draft
     """
     with get_connection() as conn:
-        cur = conn.execute(sql, (extraction_id, field_name, original_value, corrected_value, _now()))
-        if cur.lastrowid:
-            logger.info("Logged correction for extraction %d field %s", extraction_id, field_name)
-            return cur.lastrowid
-    return None
-    return count
+        rows = conn.execute(
+            """SELECT ed.*, p.full_name as prospect_name, p.email as prospect_email,
+                      p.company_name, p.position as prospect_title,
+                      jp.title as job_title, jp.keyword_matched
+               FROM email_drafts ed
+               JOIN prospects p ON ed.prospect_id = p.id
+               LEFT JOIN job_postings jp ON ed.job_posting_id = jp.id
+               WHERE ed.status = 'sent'
+                 AND ed.resend_id IS NOT NULL
+                 AND ed.sent_at <= datetime('now', ?)
+                 AND COALESCE(ed.sequence_step, 1) < ?
+                 AND NOT EXISTS (
+                     SELECT 1 FROM email_events ee
+                     WHERE ee.draft_id = ed.id AND ee.event_type = 'opened'
+                 )
+               ORDER BY ed.sent_at ASC""",
+            (f"-{min_days} days", max_step),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_draft_sequence(prospect_id: int) -> list[dict]:
+    """Get all drafts for a prospect ordered by sequence step."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT ed.*, p.email as prospect_email
+               FROM email_drafts ed
+               JOIN prospects p ON ed.prospect_id = p.id
+               WHERE ed.prospect_id = ?
+               ORDER BY COALESCE(ed.sequence_step, 1) ASC, ed.created_at ASC""",
+            (prospect_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+# ------------------------------------------------------------------
+# LinkedIn Messages (F4)
+# ------------------------------------------------------------------
+
+def insert_linkedin_message(data: dict) -> Optional[int]:
+    """Insert a LinkedIn message. Returns message id."""
+    sql = """
+        INSERT INTO linkedin_messages
+            (prospect_id, draft_id, message_type, message_text, status, created_at)
+        VALUES
+            (:prospect_id, :draft_id, :message_type, :message_text, :status, :created_at)
+    """
+    data.setdefault("status", "pending")
+    data.setdefault("created_at", _now())
+    with get_connection() as conn:
+        cur = conn.execute(sql, data)
+        return cur.lastrowid if cur.lastrowid else None
+
+
+def get_linkedin_messages_by_prospect(prospect_id: int) -> list[dict]:
+    """Get all LinkedIn messages for a prospect."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM linkedin_messages WHERE prospect_id = ? ORDER BY created_at ASC",
+            (prospect_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_linkedin_message_by_draft(draft_id: int) -> Optional[dict]:
+    """Get LinkedIn message associated with a draft."""
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM linkedin_messages WHERE draft_id = ? ORDER BY created_at DESC LIMIT 1",
+            (draft_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def update_linkedin_message(message_id: int, data: dict) -> None:
+    """Update fields on a LinkedIn message. Keys must be in the allowlist."""
+    unknown = set(data) - _UPDATABLE_COLUMNS["linkedin_messages"]
+    if unknown:
+        raise ValueError(f"Cannot update linkedin_messages columns: {sorted(unknown)}")
+    sets = []
+    params = []
+    for key, val in data.items():
+        sets.append(f"{key} = ?")
+        params.append(val)
+    params.append(message_id)
+    with get_connection() as conn:
+        conn.execute(
+            f"UPDATE linkedin_messages SET {', '.join(sets)} WHERE id = ?", params
+        )
+
+
+def get_linkedin_stats() -> dict:
+    """Aggregate LinkedIn outreach stats."""
+    with get_connection() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM linkedin_messages").fetchone()[0]
+        copied = conn.execute(
+            "SELECT COUNT(*) FROM linkedin_messages WHERE status IN ('copied','sent','replied')"
+        ).fetchone()[0]
+        sent = conn.execute(
+            "SELECT COUNT(*) FROM linkedin_messages WHERE status IN ('sent','replied')"
+        ).fetchone()[0]
+        replied = conn.execute(
+            "SELECT COUNT(*) FROM linkedin_messages WHERE status = 'replied'"
+        ).fetchone()[0]
+
+    reply_rate = (replied / sent * 100) if sent > 0 else 0.0
+    return {
+        "total": total,
+        "copied": copied,
+        "sent": sent,
+        "replied": replied,
+        "reply_rate": round(reply_rate, 1),
+    }
+
+
+def get_linkedin_messages_list(
+    status: str = None, limit: int = 50, offset: int = 0
+) -> tuple[list[dict], int]:
+    """Paginated LinkedIn messages with prospect data."""
+    conditions = []
+    params = []
+    if status:
+        conditions.append("lm.status = ?")
+        params.append(status)
+
+    where = "WHERE " + " AND ".join(conditions) if conditions else ""
+
+    with get_connection() as conn:
+        total = conn.execute(
+            f"SELECT COUNT(*) FROM linkedin_messages lm {where}", params
+        ).fetchone()[0]
+
+        rows = conn.execute(
+            f"""SELECT lm.*, p.full_name as prospect_name, p.email as prospect_email,
+                       p.company_name, p.linkedin_url, p.position as prospect_title
+                FROM linkedin_messages lm
+                JOIN prospects p ON lm.prospect_id = p.id
+                {where}
+                ORDER BY lm.created_at DESC
+                LIMIT ? OFFSET ?""",
+            params + [limit, offset],
+        ).fetchall()
+
+    return [dict(r) for r in rows], total
+
+
+# ------------------------------------------------------------------
+# AI Variants (F5)
+# ------------------------------------------------------------------
+
+def get_draft_variants(draft_id: int) -> list[dict]:
+    """Get all variant drafts for a given draft."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT ed.*, p.full_name as prospect_name, p.email as prospect_email
+               FROM email_drafts ed
+               JOIN prospects p ON ed.prospect_id = p.id
+               WHERE ed.variant_of = ?
+               ORDER BY ed.created_at ASC""",
+            (draft_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+# ------------------------------------------------------------------
+# A/B Testing (C1)
+# ------------------------------------------------------------------
+
+def get_ab_test_groups() -> list[dict]:
+    """Get all drafts that have variants, grouped with engagement stats."""
+    with get_connection() as conn:
+        # Find all parent drafts that have at least one variant
+        parents = conn.execute(
+            """SELECT DISTINCT variant_of FROM email_drafts
+               WHERE variant_of IS NOT NULL""",
+        ).fetchall()
+
+        results = []
+        for row in parents:
+            parent_id = row[0]
+            parent = conn.execute(
+                """SELECT ed.*, p.full_name as prospect_name, p.email as prospect_email,
+                          p.company_name
+                   FROM email_drafts ed
+                   JOIN prospects p ON ed.prospect_id = p.id
+                   WHERE ed.id = ?""",
+                (parent_id,),
+            ).fetchone()
+            if not parent:
+                continue
+
+            parent = dict(parent)
+
+            # Get all variants including parent
+            variants = conn.execute(
+                """SELECT ed.*, p.full_name as prospect_name, p.email as prospect_email
+                   FROM email_drafts ed
+                   JOIN prospects p ON ed.prospect_id = p.id
+                   WHERE ed.id = ? OR ed.variant_of = ?
+                   ORDER BY ed.id ASC""",
+                (parent_id, parent_id),
+            ).fetchall()
+
+            parent["variants"] = [dict(v) for v in variants]
+            parent["variant_count"] = len(parent["variants"])
+
+            # Determine winner (highest open_count)
+            best = max(parent["variants"], key=lambda v: (v.get("open_count") or 0))
+            parent["winner_id"] = best["id"] if (best.get("open_count") or 0) > 0 else None
+
+            results.append(parent)
+
+    return results
+
+
+def get_ab_test_results(parent_draft_id: int) -> dict:
+    """Get detailed A/B test results for a specific parent draft."""
+    with get_connection() as conn:
+        parent = conn.execute(
+            """SELECT ed.*, p.full_name as prospect_name, p.email as prospect_email,
+                      p.company_name
+               FROM email_drafts ed
+               JOIN prospects p ON ed.prospect_id = p.id
+               WHERE ed.id = ?""",
+            (parent_draft_id,),
+        ).fetchone()
+        if not parent:
+            return {}
+
+        variants = conn.execute(
+            """SELECT ed.*, p.full_name as prospect_name, p.email as prospect_email
+               FROM email_drafts ed
+               JOIN prospects p ON ed.prospect_id = p.id
+               WHERE ed.id = ? OR ed.variant_of = ?
+               ORDER BY ed.id ASC""",
+            (parent_draft_id, parent_draft_id),
+        ).fetchall()
+
+    result = dict(parent)
+    result["variants"] = [dict(v) for v in variants]
+    return result
+
+
+# ------------------------------------------------------------------
+# CRM Pipeline (C2)
+# ------------------------------------------------------------------
+
+def get_prospect_stage(prospect_id: int) -> Optional[dict]:
+    """Get current pipeline stage for a prospect."""
+    with get_connection() as conn:
+        row = conn.execute(
+            """SELECT * FROM prospect_stages
+               WHERE prospect_id = ?
+               ORDER BY moved_at DESC LIMIT 1""",
+            (prospect_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def set_prospect_stage(prospect_id: int, stage: str, notes: str = "") -> int:
+    """Set pipeline stage for a prospect. Returns new stage record id."""
+    with get_connection() as conn:
+        cursor = conn.execute(
+            """INSERT INTO prospect_stages (prospect_id, stage, moved_at, notes)
+               VALUES (?, ?, ?, ?)""",
+            (prospect_id, stage, _now(), notes),
+        )
+        conn.commit()
+    return cursor.lastrowid
+
+
+def get_pipeline_board() -> dict:
+    """Get all prospects grouped by their current stage for kanban board."""
+    stages = ["New", "Contacted", "Opened", "Replied", "Meeting", "Won", "Lost"]
+    with get_connection() as conn:
+        # Get latest stage per prospect via subquery
+        rows = conn.execute(
+            """SELECT ps.prospect_id, ps.stage, ps.moved_at, ps.notes,
+                      p.full_name, p.email, p.company_name, p.position,
+                      p.linkedin_url
+               FROM prospect_stages ps
+               JOIN prospects p ON ps.prospect_id = p.id
+               WHERE ps.id = (
+                   SELECT MAX(id) FROM prospect_stages ps2
+                   WHERE ps2.prospect_id = ps.prospect_id
+               )
+               ORDER BY ps.moved_at DESC""",
+        ).fetchall()
+
+    board = {s: [] for s in stages}
+    for row in rows:
+        d = dict(row)
+        stage = d.get("stage", "New")
+        if stage in board:
+            board[stage].append(d)
+        else:
+            board["New"].append(d)
+
+    return board
+
+
+def get_pipeline_counts() -> dict:
+    """Get count per stage."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT ps.stage, COUNT(*) as cnt
+               FROM prospect_stages ps
+               WHERE ps.id = (
+                   SELECT MAX(id) FROM prospect_stages ps2
+                   WHERE ps2.prospect_id = ps.prospect_id
+               )
+               GROUP BY ps.stage""",
+        ).fetchall()
+    return {r["stage"]: r["cnt"] for r in rows}
+
+
+def auto_move_prospect_stage(prospect_id: int, event_type: str) -> None:
+    """Auto-move prospect to new stage based on email event."""
+    stage_map = {
+        "delivered": "Contacted",
+        "opened": "Opened",
+        "clicked": "Opened",
+        "replied": "Replied",
+    }
+    new_stage = stage_map.get(event_type)
+    if not new_stage:
+        return
+
+    current = get_prospect_stage(prospect_id)
+    if current:
+        # Don't move backwards
+        stage_order = ["New", "Contacted", "Opened", "Replied", "Meeting", "Won", "Lost"]
+        current_idx = stage_order.index(current["stage"]) if current["stage"] in stage_order else 0
+        new_idx = stage_order.index(new_stage) if new_stage in stage_order else 0
+        if new_idx <= current_idx:
+            return
+
+    set_prospect_stage(prospect_id, new_stage, f"Auto: {event_type} event")
+
+
+# ------------------------------------------------------------------
+# Intent Signals (C3)
+# ------------------------------------------------------------------
+
+def get_company_intent_signals(domain: str) -> dict:
+    """Calculate hiring intent signals for a company domain."""
+    with get_connection() as conn:
+        # Count total job postings
+        total = conn.execute(
+            "SELECT COUNT(*) FROM job_postings WHERE company_domain = ?",
+            (domain,),
+        ).fetchone()[0]
+
+        # Recent postings (last 30 days)
+        recent = conn.execute(
+            """SELECT COUNT(*) FROM job_postings
+               WHERE company_domain = ? AND scraped_at >= date('now', '-30 days')""",
+            (domain,),
+        ).fetchone()[0]
+
+        # Unique keywords
+        keywords = conn.execute(
+            """SELECT DISTINCT keyword_matched FROM job_postings
+               WHERE company_domain = ? AND keyword_matched IS NOT NULL""",
+            (domain,),
+        ).fetchall()
+
+    # Calculate intent score (0-100)
+    score = 0
+    if total >= 1:
+        score += 20
+    if total >= 3:
+        score += 20
+    if total >= 5:
+        score += 10
+    if recent >= 2:
+        score += 25  # Active hiring
+    if recent >= 4:
+        score += 15  # Very active
+    if len(keywords) >= 2:
+        score += 10  # Multi-keyword
+
+    level = "cold"
+    if score >= 70:
+        level = "hot"
+    elif score >= 45:
+        level = "warm"
+    elif score >= 20:
+        level = "medium"
+
+    return {
+        "score": min(score, 100),
+        "level": level,
+        "total_postings": total,
+        "recent_postings": recent,
+        "keyword_count": len(keywords),
+    }
+
+
+def update_company_intent_score(domain: str, score: int, signals_json: str) -> None:
+    """Store intent score on the company record."""
+    with get_connection() as conn:
+        conn.execute(
+            """UPDATE companies SET intent_score = ?, intent_signals = ?
+               WHERE website = ? OR website = ?""",
+            (score, signals_json, domain, f"https://{domain}"),
+        )
+        conn.commit()
+
+
+def get_hot_prospects(limit: int = 10) -> list[dict]:
+    """Get prospects from companies with highest intent signals."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT p.*, jp.title as job_title, jp.company_domain,
+                      (SELECT COUNT(*) FROM job_postings jp2
+                       WHERE jp2.company_domain = jp.company_domain) as posting_count
+               FROM prospects p
+               LEFT JOIN job_postings jp ON p.job_posting_id = jp.id
+               WHERE jp.company_domain IS NOT NULL
+               ORDER BY posting_count DESC, p.created_at DESC
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+# ------------------------------------------------------------------
+# Prospect Profile (C4)
+# ------------------------------------------------------------------
+
+def get_prospect_full_profile(prospect_id: int) -> Optional[dict]:
+    """Get comprehensive prospect profile with all related data."""
+    with get_connection() as conn:
+        prospect = conn.execute(
+            """SELECT p.*, jp.title as job_title, jp.location as job_location,
+                      jp.url as job_url, jp.company_domain, jp.org_number,
+                      jp.keyword_matched
+               FROM prospects p
+               LEFT JOIN job_postings jp ON p.job_posting_id = jp.id
+               WHERE p.id = ?""",
+            (prospect_id,),
+        ).fetchone()
+        if not prospect:
+            return None
+
+        prospect = dict(prospect)
+
+        # Company info from BRREG
+        if prospect.get("org_number"):
+            company = conn.execute(
+                "SELECT * FROM companies WHERE org_number = ?",
+                (prospect["org_number"],),
+            ).fetchone()
+            prospect["company_info"] = dict(company) if company else None
+        else:
+            prospect["company_info"] = None
+
+        # Email drafts
+        drafts = conn.execute(
+            """SELECT id, subject, status, template_name, created_at, sent_at,
+                      open_count, click_count
+               FROM email_drafts WHERE prospect_id = ?
+               ORDER BY created_at DESC""",
+            (prospect_id,),
+        ).fetchall()
+        prospect["drafts"] = [dict(d) for d in drafts]
+
+        # LinkedIn messages
+        li_msgs = conn.execute(
+            """SELECT * FROM linkedin_messages WHERE prospect_id = ?
+               ORDER BY created_at DESC""",
+            (prospect_id,),
+        ).fetchall()
+        prospect["linkedin_messages"] = [dict(m) for m in li_msgs]
+
+        # Email events
+        events = conn.execute(
+            """SELECT ee.* FROM email_events ee
+               JOIN email_drafts ed ON ee.draft_id = ed.id
+               WHERE ed.prospect_id = ?
+               ORDER BY ee.created_at DESC LIMIT 20""",
+            (prospect_id,),
+        ).fetchall()
+        prospect["email_events"] = [dict(e) for e in events]
+
+        # Pipeline stage
+        stage = conn.execute(
+            """SELECT * FROM prospect_stages
+               WHERE prospect_id = ?
+               ORDER BY moved_at DESC LIMIT 1""",
+            (prospect_id,),
+        ).fetchone()
+        prospect["current_stage"] = dict(stage) if stage else None
+
+    return prospect
+
+
