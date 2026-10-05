@@ -108,6 +108,19 @@ def test_open_webhook_does_not_suppress(monkeypatch):
     assert db_module.is_suppressed("a@acme.no") is False
 
 
+def test_bounce_unknown_draft_still_suppresses(monkeypatch):
+    client = _web_client(monkeypatch)
+    resp = client.post(
+        "/webhooks/resend",
+        json={
+            "type": "email.bounced",
+            "data": {"email_id": "unknown-id", "to": ["ghost@x.no"]},
+        },
+    )
+    assert resp.status_code == 200
+    assert db_module.is_suppressed("ghost@x.no") is True
+
+
 # --- senders honor suppression + schedule --------------------------------
 
 

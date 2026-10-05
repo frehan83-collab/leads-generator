@@ -60,6 +60,15 @@ def resend_webhook():
         # Find the draft this event belongs to
         draft_id = db.get_draft_id_by_resend_id(resend_id)
 
+        # Permanent suppression on bounce/complaint — by address, even if
+        # the draft is unknown (retries, old sends, Snov-side mail).
+        if event_type in ("bounced", "complained"):
+            try:
+                for address in [a.strip() for a in data.get("to", []) if a]:
+                    db.add_suppression(address, event_type)
+            except Exception as suppress_exc:
+                logger.warning("Suppression failed: %s", suppress_exc)
+
         # Store the event
         db.insert_email_event(
             {
