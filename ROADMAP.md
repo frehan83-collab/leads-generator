@@ -212,4 +212,4 @@ production-grade for unattended multi-user operation.
 - [x] `RESEND_SENDING_ENABLED=false` by default; API refuses Resend sends,
   follow-up auto-send forced off, UI hides Resend buttons (safe default)
 - [x] Snov remains the scheduled sender; Resend stays as opt-in fallback
-- [x] 2 new tests; suite 269 → 274 green; ruff clean
+- [x] 2 new tests; suite 269 → 272 green; ruff clean
