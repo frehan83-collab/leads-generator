@@ -26,7 +26,7 @@ def cmd_web(host: str = "127.0.0.1", port: int = 5000):
 
 
 def cmd_run_now(sources: list[str] = None):
-    from src.config import settings, resolve_keywords
+    from src.config import resolve_keywords, settings
     from src.pipeline.lead_pipeline import LeadPipeline
     keywords = resolve_keywords()
     snov_list_id = settings.snov_list_id
@@ -180,7 +180,7 @@ if __name__ == "__main__":
         cmd_scheduler()
     else:
         # Default: web dashboard
-        print(f"\n  Sperton Leads Dashboard")
+        print("\n  Sperton Leads Dashboard")
         print(f"  Starting at http://{args.host}:{args.port}")
-        print(f"  Press Ctrl+C to stop\n")
+        print("  Press Ctrl+C to stop\n")
         cmd_web(host=args.host, port=args.port)

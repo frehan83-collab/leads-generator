@@ -134,6 +134,8 @@ def send_email_direct(draft_id: int) -> dict:
             "subject": draft["subject"],
             "html": email_html,
         }
+        if settings.reply_to_email:
+            params["reply_to"] = settings.reply_to_email
         headers = unsubscribe_headers(draft["prospect_email"])
         if headers:
             params["headers"] = headers

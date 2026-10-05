@@ -66,8 +66,11 @@ class Settings:
 
     # -- Outreach -------------------------------------------------------
     resend_api_key: str | None = os.getenv("RESEND_API_KEY")
-    from_email: str = os.getenv("FROM_EMAIL", "fredrik.hansen@sperton.com")
+    from_email: str = os.getenv("FROM_EMAIL", "fredrik@mail.sperton.com")
     from_name: str = os.getenv("FROM_NAME", "Fredrik Hansen")
+    # Where replies land (monitored inbox). Defaults to the human address —
+    # never the subdomain, which nobody reads.
+    reply_to_email: str | None = os.getenv("REPLY_TO_EMAIL", "fredrik@sperton.com")
     send_time: str = os.getenv("SEND_TIME", "08:30")
     # Safe default: follow-ups are created as drafts awaiting human approval.
     # Set FOLLOWUP_AUTO_SEND=true to restore fully automatic sequences.
