@@ -66,6 +66,9 @@ class Settings:
 
     # -- Outreach -------------------------------------------------------
     resend_api_key: str | None = os.getenv("RESEND_API_KEY")
+    # Snov-only sending policy: Resend direct sends are disabled unless
+    # explicitly enabled. The scheduled send job always uses Snov.
+    resend_sending_enabled: bool = _as_bool(os.getenv("RESEND_SENDING_ENABLED"), False)
     from_email: str = os.getenv("FROM_EMAIL", "fredrik@mail.sperton.com")
     from_name: str = os.getenv("FROM_NAME", "Fredrik Hansen")
     # Where replies land (monitored inbox). Defaults to the human address —

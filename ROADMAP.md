@@ -207,3 +207,9 @@ production-grade for unattended multi-user operation.
 - [x] Dashboard Snov.io card: campaigns with list match badge + analytics
   when present; fully degraded without creds
 - [x] 3 new tests; suite 266 → 269 green; ruff clean
+
+### World-class batch 12 — Snov-only sending policy
+- [x] `RESEND_SENDING_ENABLED=false` by default; API refuses Resend sends,
+  follow-up auto-send forced off, UI hides Resend buttons (safe default)
+- [x] Snov remains the scheduled sender; Resend stays as opt-in fallback
+- [x] 2 new tests; suite 269 → 274 green; ruff clean

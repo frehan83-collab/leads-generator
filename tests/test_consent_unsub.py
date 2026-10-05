@@ -155,6 +155,7 @@ def test_send_includes_unsub_headers_and_footer(tmp_path, monkeypatch):
     _db(tmp_path, monkeypatch)
     stub = _test_settings(
         resend_api_key="re_test",
+        resend_sending_enabled=True,
         app_base_url="https://leads.example.com",
         unsubscribe_mailto="unsub@x.no",
     )

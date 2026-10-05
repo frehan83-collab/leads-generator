@@ -124,9 +124,12 @@ def test_bounce_unknown_draft_still_suppresses(monkeypatch):
 # --- senders honor suppression + schedule --------------------------------
 
 
-def test_resend_sender_refuses_suppressed():
+def test_resend_sender_refuses_suppressed(monkeypatch):
+    import src.outreach.email_sender as es_mod
+    from src.config import Settings
     from src.outreach import email_sender
 
+    monkeypatch.setattr(es_mod, "settings", Settings(resend_sending_enabled=True))
     draft_id, _ = _seed_draft()
     db_module.add_suppression("a@acme.no", "bounce")
     result = email_sender.send_email_direct(draft_id)
@@ -188,7 +191,9 @@ def test_resend_retry_then_success(monkeypatch):
     from src.config import Settings as S
 
     # settings is frozen: replace the module attribute instead
-    monkeypatch.setattr(es_mod, "settings", S(resend_api_key="re_test"))
+    monkeypatch.setattr(
+        es_mod, "settings", S(resend_api_key="re_test", resend_sending_enabled=True)
+    )
     result = email_sender.send_email_direct(draft_id)
     assert result["success"] is True
     assert len(calls) == 2
@@ -210,7 +215,9 @@ def test_resend_validation_error_no_retry(monkeypatch):
         raise ValidationError("bad", "validation_error", 422)
 
     monkeypatch.setattr(resend.Emails, "send", fake_send)
-    monkeypatch.setattr(es_mod, "settings", S(resend_api_key="re_test"))
+    monkeypatch.setattr(
+        es_mod, "settings", S(resend_api_key="re_test", resend_sending_enabled=True)
+    )
     result = email_sender.send_email_direct(draft_id)
     assert result["success"] is False
     assert len(calls) == 1

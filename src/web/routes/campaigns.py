@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
+from src.config import settings
 from src.database import db
 from src.emails.drafter import regenerate_draft
 from src.emails.templates import TEMPLATES
@@ -47,6 +48,7 @@ def campaigns():
         status_counts=status_counts,
         templates=TEMPLATES,
         older_than=older_than_raw,
+        resend_sending=settings.resend_sending_enabled,
     )
 
 
@@ -83,6 +85,7 @@ def draft_detail(draft_id):
         linkedin_msg=linkedin_msg,
         variants=variants,
         gate=gate,
+        resend_sending=settings.resend_sending_enabled,
     )
 
 

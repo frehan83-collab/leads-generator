@@ -6,6 +6,7 @@ import threading
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 
+from src.config import settings as app_settings
 from src.database import db
 from src.web.auth import audit
 from src.web.jobstate import is_running, set_running, snapshot
@@ -68,6 +69,7 @@ def settings():
         pipeline_running=snapshot()["pipeline"],
         sending_running=snapshot()["sending"],
         resend_configured=resend_configured,
+        resend_sending=app_settings.resend_sending_enabled,
         emailing_running=snapshot()["emailing"],
     )
 

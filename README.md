@@ -104,12 +104,16 @@ Central defaults and validation live in `src/config.py`.
 - Deliverability gate scores every draft (spam triggers, caps, links,
   subject/body length, opt-out line) with a visible badge; optional
   hard block via `DELIVERABILITY_BLOCK_BELOW`.
+- **Sending policy: Snov first.** Scheduled sending always uses Snov.io
+  (warmed mailbox, native sequences). Resend direct sends are **disabled
+  by default** (`RESEND_SENDING_ENABLED=false`); the UI hides Resend
+  buttons and the API refuses sends while disabled.
 - All secrets come from the environment — no committed fallbacks.
 
 ## Testing
 
 ```bash
-pytest tests/ -v                        # full suite (269 tests)
+pytest tests/ -v                        # full suite (274 tests)
 pytest tests/test_hardening.py -v       # security/safety regression tests
 pytest tests/test_pipeline_run.py -v    # mocked end-to-end pipeline runs
 ruff check src tests                    # lint (enforced in CI)

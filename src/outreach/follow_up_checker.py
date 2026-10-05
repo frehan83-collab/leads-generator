@@ -115,6 +115,12 @@ def check_and_create_followups(
     """
     if auto_send is None:
         auto_send = settings.followup_auto_send
+    if auto_send and not settings.resend_sending_enabled:
+        logger.warning(
+            "Follow-up auto-send requested but Resend sending is disabled "
+            "(Snov-only policy) — follow-ups will stay as drafts"
+        )
+        auto_send = False
     stats = {"checked": 0, "followups_created": 0, "followups_sent": 0, "errors": []}
 
     try:

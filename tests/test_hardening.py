@@ -115,13 +115,48 @@ def test_followup_draft_approved_when_opted_in(monkeypatch):
 # --- double-send guard --------------------------------------------------
 
 
-def test_send_refuses_already_sent_draft():
+def test_send_refuses_already_sent_draft(monkeypatch):
+    import src.outreach.email_sender as es_mod
+    from src.config import Settings
     from src.outreach import email_sender
 
+    monkeypatch.setattr(es_mod, "settings", Settings(resend_sending_enabled=True))
     draft_id = _make_prospect_and_draft(sent_at="2024-01-02T10:00:00")
     result = email_sender.send_email_direct(draft_id)
     assert result["success"] is False
     assert "already sent" in result["error"]
+
+
+def test_send_refused_when_resend_disabled():
+    from src.outreach import email_sender
+
+    draft_id = _make_prospect_and_draft()
+    result = email_sender.send_email_direct(draft_id)
+    assert result["success"] is False
+    assert "disabled" in result["error"]
+
+
+def test_followup_auto_send_forced_off_when_resend_disabled(monkeypatch):
+    from src.config import Settings
+    from src.outreach import follow_up_checker as fuc
+
+    monkeypatch.setattr(
+        fuc,
+        "settings",
+        Settings(followup_auto_send=True, resend_sending_enabled=False),
+    )
+    draft_id = _make_prospect_and_draft(status="sent")
+    db_module.update_email_draft(
+        draft_id,
+        {
+            "sent_at": "2020-01-01T09:00:00",
+            "resend_id": "re_1",
+            "sequence_step": 1,
+        },
+    )
+    out = fuc.check_and_create_followups(auto_send=True)
+    assert out["followups_created"] == 1
+    assert out["followups_sent"] == 0  # forced off: drafts, never sends
 
 
 # --- config -------------------------------------------------------------

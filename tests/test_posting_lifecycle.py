@@ -171,7 +171,11 @@ def _seed_draft(tmp_path, monkeypatch, posting_id=None):
 
 
 def test_senders_refuse_expired_posting(tmp_path, monkeypatch):
+    import src.outreach.email_sender as es_mod
+    from src.config import Settings
+
     _db(tmp_path, monkeypatch)
+    monkeypatch.setattr(es_mod, "settings", Settings(resend_sending_enabled=True))
     pid = _posting()
     db_module.update_job_posting(pid, {"status": "expired"})
     draft_id = _seed_draft(tmp_path, monkeypatch, pid)

@@ -81,6 +81,12 @@ def send_email_direct(draft_id: int) -> dict:
     api_key = settings.resend_api_key
     from_email = settings.from_email
 
+    if not settings.resend_sending_enabled:
+        return {
+            "success": False,
+            "error": "Resend sending is disabled (Snov-only sending policy)",
+        }
+
     draft = db.get_email_draft_by_id(draft_id)
     if not draft:
         return {"success": False, "error": "Draft not found"}
