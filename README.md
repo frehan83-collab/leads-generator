@@ -109,7 +109,7 @@ Central defaults and validation live in `src/config.py`.
 ## Testing
 
 ```bash
-pytest tests/ -v                        # full suite (266 tests)
+pytest tests/ -v                        # full suite (269 tests)
 pytest tests/test_hardening.py -v       # security/safety regression tests
 pytest tests/test_pipeline_run.py -v    # mocked end-to-end pipeline runs
 ruff check src tests                    # lint (enforced in CI)

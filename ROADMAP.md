@@ -198,5 +198,12 @@ production-grade for unattended multi-user operation.
   auth-exempt, no-oracle responses); suppresses + logs on use
 - [x] Send-time List-Unsubscribe headers + appended footer (drafts stay clean)
 - [x] Follow-ups decoupled from opens (time-based; opener-without-reply now
-  correctly qualifies); tracking-off documented as dashboard setting
+  correctly qualifies); expired-posting exclusion kept
 - [x] 9 new tests; suite 257 → 266 green; ruff clean
+
+### World-class batch 11 — Snov campaign visibility
+- [x] Fixed `get_user_campaigns` list-shape crash; Draft campaigns show
+  "no stats yet" instead of erroring (400 = no data, expected)
+- [x] Dashboard Snov.io card: campaigns with list match badge + analytics
+  when present; fully degraded without creds
+- [x] 3 new tests; suite 266 → 269 green; ruff clean

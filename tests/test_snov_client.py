@@ -169,3 +169,13 @@ def test_public_method_returns_none_on_transient(client):
         client, "_post", side_effect=requests.exceptions.ConnectionError("down")
     ):
         assert client.get_prospects_by_domain("aquacorp.no") == []
+
+
+def test_get_user_campaigns_accepts_list_shape(client):
+    with patch("requests.get") as mock_get:
+        mock_get.return_value.json.return_value = [
+            {"id": 1, "campaign": "Draft", "list_id": 9, "status": "Draft"}
+        ]
+        out = client.get_user_campaigns()
+        assert isinstance(out, list)
+        assert out[0]["id"] == 1

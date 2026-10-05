@@ -1,10 +1,14 @@
 """Dashboard home page — stats cards, charts, activity feed."""
 
+import logging
+
 from flask import Blueprint, render_template
 
+from src.config import settings
 from src.database import db
 
 dashboard_bp = Blueprint("dashboard", __name__)
+logger = logging.getLogger(__name__)
 
 
 @dashboard_bp.route("/")
@@ -51,6 +55,26 @@ def index():
     # C2: Pipeline counts
     pipeline_counts = db.get_pipeline_counts()
 
+    # Snov.io campaigns + analytics (best-effort; Draft campaigns have no stats)
+    snov_campaigns = []
+    try:
+        from src.snov.client import SnovClient
+
+        snov = SnovClient()
+        for camp in snov.get_user_campaigns():
+            entry = dict(camp)
+            entry["analytics"] = None
+            try:
+                entry["analytics"] = snov.get_campaign_analytics(str(camp.get("id")))
+            except Exception:
+                pass
+            entry["is_our_list"] = str(camp.get("list_id") or "") == str(
+                settings.snov_list_id or ""
+            )
+            snov_campaigns.append(entry)
+    except Exception as exc:
+        logger.warning("Snov campaigns unavailable: %s", exc)
+
     return render_template(
         "dashboard.html",
         stats=stats,
@@ -64,6 +88,7 @@ def index():
         linkedin_stats=linkedin_stats,
         hot_prospects=hot_prospects,
         pipeline_counts=pipeline_counts,
+        snov_campaigns=snov_campaigns,
     )
 
 

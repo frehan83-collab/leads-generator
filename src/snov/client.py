@@ -483,9 +483,9 @@ class SnovClient:
         """Return all campaigns."""
         try:
             result = self._get("/v1/get-user-campaigns")
+            if isinstance(result, list):
+                return result
             return result.get("data") or []
-        except SnovError:
-            raise
         except Exception as exc:
             logger.error("get_user_campaigns error: %s", exc)
         return []

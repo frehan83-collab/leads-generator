@@ -78,3 +78,29 @@ def test_export_rows_carry_scores(tmp_path, monkeypatch):
     rows = db_module.get_prospects_for_export()
     assert rows[0]["lead_score"] == 85
     assert rows[0]["lead_level"] == "hot"
+
+
+def test_dashboard_snov_card_renders(tmp_path, monkeypatch):
+    from unittest.mock import MagicMock
+
+    _seed(tmp_path, monkeypatch, score=None)
+    mock_snov = MagicMock()
+    mock_snov.get_user_campaigns.return_value = [
+        {"id": 2927197, "campaign": "Draft", "list_id": 9, "status": "Draft"}
+    ]
+    mock_snov.get_campaign_analytics.side_effect = Exception("400 no stats")
+    monkeypatch.setattr("src.snov.client.SnovClient", lambda *a, **k: mock_snov)
+    html = _client(monkeypatch).get("/").data.decode()
+    assert "Snov.io Campaigns" in html
+    assert "No stats yet" in html
+
+
+def test_dashboard_snov_unavailable_degrades(tmp_path, monkeypatch):
+    from unittest.mock import MagicMock
+
+    _seed(tmp_path, monkeypatch, score=None)
+    monkeypatch.setattr(
+        "src.snov.client.SnovClient",
+        MagicMock(side_effect=ValueError("SNOV_CLIENT_ID is not set")),
+    )
+    assert _client(monkeypatch).get("/").status_code == 200
